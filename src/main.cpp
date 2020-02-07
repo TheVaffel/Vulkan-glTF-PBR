@@ -9,6 +9,14 @@
 // glTF format: https://github.com/KhronosGroup/glTF
 // tinyglTF loader: https://github.com/syoyo/tinygltf
 
+/* 
+ * Modifications by Håkon Flatval, February 2020:
+ * - Add support for taking screenshots
+ */
+
+#define SCREENSHOT_WIDTH 1280
+#define SCREENSHOT_HEIGHT 720
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -17,6 +25,8 @@
 #include <chrono>
 #include <map>
 #include "algorithm"
+
+#include "unistd.h"
 
 #if defined(__ANDROID__)
 #define TINYGLTF_ANDROID_LOAD_FROM_ASSETS
@@ -94,6 +104,36 @@ public:
 		VkDescriptorSet scene;
 		VkDescriptorSet skybox;
 	};
+
+
+    struct CustomStuff {
+	struct {
+	    VkImage image;
+	    VkImageView view;
+	    VkDeviceMemory memory;
+	} fbColor;
+
+        struct {
+	    VkImage image;
+	    VkDeviceMemory memory;
+	} reachableImage;
+
+	struct {
+	    VkImage image;
+	    VkImageView view;
+	    VkDeviceMemory memory;
+	} fbDepth;
+	
+	VkFramebuffer framebuffer;
+	VkSemaphore renderedSemaphore;
+	VkSemaphore copiedSemaphore;
+	VkFence fence;
+	
+	VkCommandBuffer commandBuffer;
+	VkCommandBuffer secondCommandBuffer;
+	VkRenderPass renderPass;
+    } customStuff;
+    
 	std::vector<DescriptorSets> descriptorSets;
 
 	std::vector<VkCommandBuffer> commandBuffers;
@@ -205,18 +245,19 @@ public:
 		delete ui;
 	}
 
-	void renderNode(vkglTF::Node *node, uint32_t cbIndex, vkglTF::Material::AlphaMode alphaMode) {
+	void renderNode(vkglTF::Node *node, int32_t cbIndex, vkglTF::Material::AlphaMode alphaMode) {
+	    
 		if (node->mesh) {
 			// Render mesh primitives
 			for (vkglTF::Primitive * primitive : node->mesh->primitives) {
 				if (primitive->material.alphaMode == alphaMode) {
 
 					const std::vector<VkDescriptorSet> descriptorsets = {
-						descriptorSets[cbIndex].scene,
+											     descriptorSets[cbIndex == -1 ? 0 : cbIndex].scene,
 						primitive->material.descriptorSet,
 						node->mesh->uniformBuffer.descriptorSet,
 					};
-					vkCmdBindDescriptorSets(commandBuffers[cbIndex], VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout, 0, static_cast<uint32_t>(descriptorsets.size()), descriptorsets.data(), 0, NULL);
+					vkCmdBindDescriptorSets(cbIndex == -1 ? customStuff.commandBuffer : commandBuffers[cbIndex], VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout, 0, static_cast<uint32_t>(descriptorsets.size()), descriptorsets.data(), 0, NULL);
 
 					// Pass material parameters as push constants
 					PushConstBlockMaterial pushConstBlockMaterial{};					
@@ -251,12 +292,12 @@ public:
 						pushConstBlockMaterial.specularFactor = glm::vec4(primitive->material.extension.specularFactor, 1.0f);
 					}
 
-					vkCmdPushConstants(commandBuffers[cbIndex], pipelineLayout, VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(PushConstBlockMaterial), &pushConstBlockMaterial);
+					vkCmdPushConstants(cbIndex == -1 ? customStuff.commandBuffer : commandBuffers[cbIndex], pipelineLayout, VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(PushConstBlockMaterial), &pushConstBlockMaterial);
 
 					if (primitive->hasIndices) {
-						vkCmdDrawIndexed(commandBuffers[cbIndex], primitive->indexCount, 1, primitive->firstIndex, 0, 0);
+						vkCmdDrawIndexed(cbIndex == -1 ? customStuff.commandBuffer : commandBuffers[cbIndex], primitive->indexCount, 1, primitive->firstIndex, 0, 0);
 					} else {
-						vkCmdDraw(commandBuffers[cbIndex], primitive->vertexCount, 1, 0, 0);
+						vkCmdDraw(cbIndex == -1 ? customStuff.commandBuffer : commandBuffers[cbIndex], primitive->vertexCount, 1, 0, 0);
 					}
 				}
 			}
@@ -266,6 +307,77 @@ public:
 			renderNode(child, cbIndex, alphaMode);
 		}
 	}
+
+    void recordCustomCommandBuffer() {
+	VkCommandBufferBeginInfo cmdBufferBeginInfo{};
+	cmdBufferBeginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+	VkClearValue clearValues[2];
+	clearValues[0].color = { { 0.0f, 0.0f, 0.0f, 1.0f } };
+	clearValues[1].depthStencil = { 1.0f, 0};
+
+	VkRenderPassBeginInfo rpbi {};
+	rpbi.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
+	rpbi.renderPass = renderPass;
+	rpbi.renderArea.offset.x = 0;
+	rpbi.renderArea.offset.y = 0;
+	rpbi.renderArea.extent.width = SCREENSHOT_WIDTH;
+	rpbi.renderArea.extent.height = SCREENSHOT_HEIGHT;
+	rpbi.clearValueCount = 2;
+	rpbi.pClearValues = clearValues;
+	rpbi.framebuffer = customStuff.framebuffer;
+
+	VkCommandBuffer cb = customStuff.commandBuffer;
+
+	std::cout << "Bouta begin command buffer" << std::endl;
+	VK_CHECK_RESULT(vkBeginCommandBuffer(cb, &cmdBufferBeginInfo));
+	std::cout << "Began command buffer" << std::endl;
+	vkCmdBeginRenderPass(cb, &rpbi, VK_SUBPASS_CONTENTS_INLINE);
+
+	VkViewport viewport{};
+	viewport.width = (float)SCREENSHOT_WIDTH;
+	viewport.height = (float)SCREENSHOT_HEIGHT;
+	viewport.minDepth = 0.0f;
+	viewport.maxDepth = 1.0f;
+	vkCmdSetViewport(cb, 0, 1, &viewport);
+
+	VkRect2D scissor{};
+	scissor.extent = { width, height };
+	vkCmdSetScissor(cb, 0, 1, &scissor);
+
+	VkDeviceSize offsets[1] = { 0 };
+
+	if (displayBackground) {
+	    vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout, 0, 1, &descriptorSets[0].skybox, 0, nullptr);
+	    vkCmdBindPipeline(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelines.skybox);
+	    models.skybox.draw(cb);
+	}
+
+	vkCmdBindPipeline(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelines.pbr);
+
+	vkglTF::Model &model = models.scene;
+
+	vkCmdBindVertexBuffers(cb, 0, 1, &model.vertices.buffer, offsets);
+	if (model.indices.buffer != VK_NULL_HANDLE) {
+	    vkCmdBindIndexBuffer(cb, model.indices.buffer, 0, VK_INDEX_TYPE_UINT32);
+	}
+
+	for (auto node : model.nodes) {
+	    renderNode(node, -1, vkglTF::Material::ALPHAMODE_OPAQUE);
+	}
+	for (auto node : model.nodes) {
+	    renderNode(node, -1, vkglTF::Material::ALPHAMODE_MASK);
+	}
+
+	vkCmdBindPipeline(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelines.pbrAlphaBlend);
+	for (auto node : model.nodes) {
+	    renderNode(node, -1, vkglTF::Material::ALPHAMODE_BLEND);
+	}
+
+	vkCmdEndRenderPass(cb);
+	std::cout << "Ending command buffer" << std::endl;
+	VK_CHECK_RESULT(vkEndCommandBuffer(cb));
+	std::cout << "Ended command buffer" << std::endl;
+    }
 
 	void recordCommandBuffers()
 	{
@@ -350,6 +462,8 @@ public:
 			vkCmdEndRenderPass(currentCB);
 			VK_CHECK_RESULT(vkEndCommandBuffer(currentCB));
 		}
+
+		recordCustomCommandBuffer();
 	}
 
 	void loadScene(std::string filename)
@@ -709,7 +823,9 @@ public:
 		multisampleStateCI.sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
 
 		if (settings.multiSampling) {
-			multisampleStateCI.rasterizationSamples = settings.sampleCount;
+		    multisampleStateCI.rasterizationSamples = settings.sampleCount;
+		} else {
+		    multisampleStateCI.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
 		}
 
 		std::vector<VkDynamicState> dynamicStateEnables = {
@@ -773,6 +889,8 @@ public:
 
 		if (settings.multiSampling) {
 			multisampleStateCI.rasterizationSamples = settings.sampleCount;
+		} else {
+		    multisampleStateCI.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
 		}
 
 		// Skybox pipeline (background cube)
@@ -781,6 +899,7 @@ public:
 			loadShader(device, "skybox.frag.spv", VK_SHADER_STAGE_FRAGMENT_BIT)
 		};
 		VK_CHECK_RESULT(vkCreateGraphicsPipelines(device, pipelineCache, 1, &pipelineCI, nullptr, &pipelines.skybox));
+		
 		for (auto shaderStage : shaderStages) {
 			vkDestroyShaderModule(device, shaderStage.module, nullptr);
 		}
@@ -792,6 +911,7 @@ public:
 		};
 		depthStencilStateCI.depthWriteEnable = VK_TRUE;
 		depthStencilStateCI.depthTestEnable = VK_TRUE;
+
 		VK_CHECK_RESULT(vkCreateGraphicsPipelines(device, pipelineCache, 1, &pipelineCI, nullptr, &pipelines.pbr));
 
 		rasterizationStateCI.cullMode = VK_CULL_MODE_NONE;
@@ -803,7 +923,9 @@ public:
 		blendAttachmentState.srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
 		blendAttachmentState.dstAlphaBlendFactor = VK_BLEND_FACTOR_ZERO;
 		blendAttachmentState.alphaBlendOp = VK_BLEND_OP_ADD;
+
 		VK_CHECK_RESULT(vkCreateGraphicsPipelines(device, pipelineCache, 1, &pipelineCI, nullptr, &pipelines.pbrAlphaBlend));
+		
 
 		for (auto shaderStage : shaderStages) {
 			vkDestroyShaderModule(device, shaderStage.module, nullptr);
@@ -1429,6 +1551,7 @@ public:
 			};
 			VkPipeline pipeline;
 			VK_CHECK_RESULT(vkCreateGraphicsPipelines(device, pipelineCache, 1, &pipelineCI, nullptr, &pipeline));
+			
 			for (auto shaderStage : shaderStages) {
 				vkDestroyShaderModule(device, shaderStage.module, nullptr);
 			}
@@ -1696,7 +1819,7 @@ public:
 
 		camera.type = Camera::CameraType::lookat;
 
-		camera.setPerspective(45.0f, (float)width / (float)height, 0.1f, 256.0f);
+		camera.setPerspective(45.0f, (float)width / (float)height, 0.001f, 256.0f);
 		camera.rotationSpeed = 0.25f;
 		camera.movementSpeed = 0.1f;
 		camera.setPosition({ 0.0f, 0.0f, 1.0f });
@@ -1739,6 +1862,8 @@ public:
 		setupDescriptors();
 		preparePipelines();
 
+		setupCustomStuff();
+
 		ui = new UI(vulkanDevice, renderPass, queue, pipelineCache, settings.sampleCount);
 		updateOverlay();
 
@@ -1746,6 +1871,349 @@ public:
 
 		prepared = true;
 	}
+
+    void cmdSetLayout(VkCommandBuffer cmd, VkImage image, VkImageAspectFlags aspect,
+				 VkImageLayout oldLayout, VkImageLayout newLayout){
+	//Shameful copy-paste from LunarG. I'm sorry :(
+
+	VkImageMemoryBarrier image_memory_barrier = {};
+	image_memory_barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+	image_memory_barrier.pNext = NULL;
+	image_memory_barrier.srcAccessMask = 0;
+	image_memory_barrier.dstAccessMask = 0;
+	image_memory_barrier.oldLayout = oldLayout;
+	image_memory_barrier.newLayout = newLayout;
+	image_memory_barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+	image_memory_barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+	image_memory_barrier.image = image;
+	image_memory_barrier.subresourceRange.aspectMask = aspect;
+	image_memory_barrier.subresourceRange.baseMipLevel = 0;
+	image_memory_barrier.subresourceRange.levelCount = 1;
+	image_memory_barrier.subresourceRange.baseArrayLayer = 0;
+	image_memory_barrier.subresourceRange.layerCount = 1;
+
+	VkPipelineStageFlags srcStages, destStages;
+
+	switch (oldLayout) {
+	case VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL:
+	    image_memory_barrier.srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+	    srcStages = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+	    break;
+
+	case VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL:
+	    image_memory_barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+	    srcStages = VK_PIPELINE_STAGE_TRANSFER_BIT;
+	    break;
+
+	case VK_IMAGE_LAYOUT_PREINITIALIZED:
+	    image_memory_barrier.srcAccessMask = VK_ACCESS_HOST_WRITE_BIT;
+	    srcStages = VK_PIPELINE_STAGE_HOST_BIT;
+	    break;
+
+	case VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL:
+	    image_memory_barrier.srcAccessMask = VK_ACCESS_SHADER_READ_BIT;
+	    srcStages = VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+	    break;
+
+	case VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL:
+	    image_memory_barrier.srcAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+	    srcStages = VK_PIPELINE_STAGE_TRANSFER_BIT;
+	    break;
+
+	default:
+	    srcStages = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
+	    break;
+	}
+
+	switch (newLayout) {
+	case VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL:
+	    image_memory_barrier.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+	    destStages = VK_PIPELINE_STAGE_TRANSFER_BIT;
+	    break;
+
+	case VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL:
+	    image_memory_barrier.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+	    destStages = VK_PIPELINE_STAGE_TRANSFER_BIT;
+	    break;
+
+	case VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL:
+	    image_memory_barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+	    destStages = VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+	    break;
+
+	case VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL:
+	    image_memory_barrier.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+	    destStages = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+	    break;
+
+	case VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL:
+	    image_memory_barrier.dstAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+	    destStages = VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
+	    break;
+
+	default:
+	    destStages = VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT;
+	    break;
+	}
+
+	vkCmdPipelineBarrier(cmd, srcStages, destStages, 0, 0, NULL, 0, NULL, 1, &image_memory_barrier);
+    }
+
+    void renderCustom() {
+	static bool firstTime = true;
+	if(!firstTime)
+	    return;
+	firstTime = false;
+	const VkPipelineStageFlags waitDstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+	VkSubmitInfo si {};
+	si.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+	si.pWaitDstStageMask = &waitDstStageMask;
+	si.pWaitSemaphores = &customStuff.copiedSemaphore;
+	si.waitSemaphoreCount = 1;
+	si.pSignalSemaphores = &customStuff.renderedSemaphore;
+	si.signalSemaphoreCount = 1;
+	si.pCommandBuffers = &customStuff.commandBuffer;
+	si.commandBufferCount = 1;
+	VK_CHECK_RESULT(vkQueueSubmit(queue, 1, &si, customStuff.fence));
+
+
+	// Wait until rendering is done
+	do{
+	    res = vkWaitForFences(device, 1, &customStuff.fence, VK_TRUE, FENCE_TIMEOUT);
+	} while (res == VK_TIMEOUT);
+
+	VK_CHECK_RESULT(vkResetFences(device, 1, &customStuff.fence));
+	
+	VkCommandBufferBeginInfo cmd_begin = {};
+	cmd_begin.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+	cmd_begin.pNext = NULL;
+	cmd_begin.flags = 0;
+	cmd_begin.pInheritanceInfo = NULL;
+  
+	vkBeginCommandBuffer(customStuff.secondCommandBuffer, &cmd_begin);
+
+	cmdSetLayout(customStuff.secondCommandBuffer, customStuff.fbColor.image, VK_IMAGE_ASPECT_COLOR_BIT,
+		     VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
+	cmdSetLayout(customStuff.secondCommandBuffer, customStuff.reachableImage.image, VK_IMAGE_ASPECT_COLOR_BIT,
+		     VK_IMAGE_LAYOUT_OPTIMAL, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+
+	VkImageBlit region = {};
+	region.srcSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+	region.srcSubresource.mipLevel = 0;
+	region.srcSubresource.baseArrayLayer = 0;
+	region.srcSubresource.layerCount = 1;
+	region.srcOffsets[0].x = 0;
+	region.srcOffsets[0].y = 0;
+	region.srcOffsets[1].x = SCREENSHOT_WIDTH;
+	region.srcOffsets[1].y = SCREENSHOT_HEIGHT;
+	region.srcOffsets[1].z = 1;
+
+	region.dstSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+	region.dstSubresource.mipLevel = 0;
+	region.dstSubresource.baseArrayLayer = 0;
+	region.dstSubresource.layerCount = 1;
+	region.dstOffsets[0].x = 0;
+	region.dstOffsets[0].y = 0;
+	region.dstOffsets[1].x = SCREENSHOT_WIDTH;
+	region.dstOffsets[1].y = SCREENSHOT_HEIGHT;
+	region.dstOffsets[1].z = 1;
+
+	VkFilter filter = VK_FILTER_NEAREST;
+
+	vkCmdBlitImage(customStuff.secondCommandBuffer, customStuff.fbColor.image,
+		       VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, customStuff.reachableImage.image,
+		       VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region, filter);
+
+
+	cmdSetLayout(customStuff.secondCommandBuffer, customStuff.fbColor.image, VK_IMAGE_ASPECT_COLOR_BIT,
+		     VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+	cmdSetLayout(customStuff.secondCommandBuffer, customStuff.reachableImage.image, VK_IMAGE_ASPECT_COLOR_BIT,
+		     VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_GENERAL);
+
+	VK_CHECK_RESULT(vkEndCommandBuffer(customStuff.secondCommandBuffer));
+
+
+	VkSubmitInfo submitInfo = {};
+
+	submitInfo.pNext = NULL;
+	submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+	submitInfo.waitSemaphoreCount = 0;
+	submitInfo.pWaitSemaphores = NULL;
+	submitInfo.pWaitDstStageMask = NULL;
+	submitInfo.commandBufferCount = 1;
+	submitInfo.pCommandBuffers = &customStuff.secondCommandBuffer;
+	submitInfo.signalSemaphoreCount = 0;
+	submitInfo.pSignalSemaphores = NULL;
+
+	/*
+	 * TODO: Submit to queue, wait for finish, memory map reachableImage, copy image to host, write as image 
+	 * Profit..?
+	 */
+	
+    }
+
+    // Function for setting up screenshot-related stuff
+    void setupCustomStuff() {
+
+	VkFenceCreateInfo fci{};
+	fci.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
+	fci.pNext = nullptr;
+	fci.flags = VK_FENCE_CREATE_SIGNALED_BIT;
+
+	VK_CHECK_RESULT(vkCreateFence(device, &fci, nullptr, &customStuff.fence));
+
+	VkSemaphoreCreateInfo sci{};
+	sci.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
+	sci.pNext = nullptr;
+	sci.flags = 0;
+
+	VK_CHECK_RESULT(vkCreateSemaphore(device, &sci, nullptr, &customStuff.renderedSemaphore));
+	VK_CHECK_RESULT(vkCreateSemaphore(device, &sci, nullptr, &customStuff.copiedSemaphore));
+
+	VkImageCreateInfo ici{};
+	ici.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
+	ici.imageType = VK_IMAGE_TYPE_2D;
+	ici.format = swapChain.colorFormat;
+	ici.extent.width = SCREENSHOT_WIDTH;
+	ici.extent.height = SCREENSHOT_HEIGHT;
+	ici.extent.depth = 1;
+	ici.mipLevels = 1;
+	ici.arrayLayers = 1;
+	ici.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+	ici.tiling = VK_IMAGE_TILING_LINEAR;
+	ici.samples = VK_SAMPLE_COUNT_1_BIT;
+	ici.usage = VK_IMAGE_USAGE_TRANSFER_DST_BIT;
+	ici.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+
+	VK_CHECK_RESULT(vkCreateImage(device, &ici, nullptr, &customStuff.reachableImage.image));
+
+	VkMemoryRequirements rMemReqs;
+	vkGetImageMemoryRequirements(device, customStuff.reachableImage.image, &rMemReqs);
+	VkMemoryAllocateInfo rMemAllocInfo{};
+	rMemAllocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+	rMemAllocInfo.allocationSize = rMemReqs.size;
+	VkBool32 rLazyMemTypePresent;
+	rMemAllocInfo.memoryTypeIndex = vulkanDevice->getMemoryType(rMemReqs.memoryTypeBits, VK_MEMORY_PROPERTY_LAZILY_ALLOCATED_BIT | VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, &rLazyMemTypePresent);
+	if (!rLazyMemTypePresent) {
+	    rMemAllocInfo.memoryTypeIndex = vulkanDevice->getMemoryType(rMemReqs.memoryTypeBits, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+	}
+	VK_CHECK_RESULT(vkAllocateMemory(device, &rMemAllocInfo, nullptr, &customStuff.reachableImage.memory));
+	vkBindImageMemory(device, customStuff.reachableImage.image, customStuff.reachableImage.memory, 0);
+
+
+	
+	// Mainly copied from the setupFrameBuffer function
+	
+	VkImageCreateInfo imageCI{};
+	imageCI.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
+	imageCI.imageType = VK_IMAGE_TYPE_2D;
+	imageCI.format = swapChain.colorFormat;
+	imageCI.extent.width = SCREENSHOT_WIDTH;
+	imageCI.extent.height = SCREENSHOT_HEIGHT;
+	imageCI.extent.depth = 1;
+	imageCI.mipLevels = 1;
+	imageCI.arrayLayers = 1;
+	imageCI.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+	imageCI.tiling = VK_IMAGE_TILING_OPTIMAL;
+	imageCI.samples = VK_SAMPLE_COUNT_1_BIT;
+	imageCI.usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT |
+	    VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
+	imageCI.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+	VK_CHECK_RESULT(vkCreateImage(device, &imageCI, nullptr, &customStuff.fbColor.image));
+
+	VkMemoryRequirements memReqs;
+	vkGetImageMemoryRequirements(device, customStuff.fbColor.image, &memReqs);
+	VkMemoryAllocateInfo memAllocInfo{};
+	memAllocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+	memAllocInfo.allocationSize = memReqs.size;
+	memAllocInfo.memoryTypeIndex = vulkanDevice->getMemoryType(memReqs.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+	VK_CHECK_RESULT(vkAllocateMemory(device, &memAllocInfo, nullptr, &customStuff.fbColor.memory));
+	vkBindImageMemory(device, customStuff.fbColor.image, customStuff.fbColor.memory, 0);
+
+	// Create image view for the MSAA target
+	VkImageViewCreateInfo imageViewCI{};
+	imageViewCI.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+	imageViewCI.image = customStuff.fbColor.image;
+	imageViewCI.viewType = VK_IMAGE_VIEW_TYPE_2D;
+	imageViewCI.format = swapChain.colorFormat;
+	imageViewCI.components.r = VK_COMPONENT_SWIZZLE_R;
+	imageViewCI.components.g = VK_COMPONENT_SWIZZLE_G;
+	imageViewCI.components.b = VK_COMPONENT_SWIZZLE_B;
+	imageViewCI.components.a = VK_COMPONENT_SWIZZLE_A;
+	imageViewCI.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+	imageViewCI.subresourceRange.levelCount = 1;
+	imageViewCI.subresourceRange.layerCount = 1;
+	VK_CHECK_RESULT(vkCreateImageView(device, &imageViewCI, nullptr, &customStuff.fbColor.view));
+
+	// Depth target
+	imageCI.imageType = VK_IMAGE_TYPE_2D;
+	imageCI.format = depthFormat;
+	imageCI.extent.width = width;
+	imageCI.extent.height = height;
+	imageCI.extent.depth = 1;
+	imageCI.mipLevels = 1;
+	imageCI.arrayLayers = 1;
+	imageCI.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+	imageCI.tiling = VK_IMAGE_TILING_OPTIMAL;
+	imageCI.samples = settings.sampleCount;
+	imageCI.usage = VK_IMAGE_USAGE_TRANSIENT_ATTACHMENT_BIT | VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
+	imageCI.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+	VK_CHECK_RESULT(vkCreateImage(device, &imageCI, nullptr, &customStuff.fbDepth.image));
+
+	vkGetImageMemoryRequirements(device, customStuff.fbDepth.image, &memReqs);
+	memAllocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+	memAllocInfo.allocationSize = memReqs.size;
+	VkBool32 lazyMemTypePresent;
+	memAllocInfo.memoryTypeIndex = vulkanDevice->getMemoryType(memReqs.memoryTypeBits, VK_MEMORY_PROPERTY_LAZILY_ALLOCATED_BIT, &lazyMemTypePresent);
+	if (!lazyMemTypePresent) {
+	    memAllocInfo.memoryTypeIndex = vulkanDevice->getMemoryType(memReqs.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+	}
+	VK_CHECK_RESULT(vkAllocateMemory(device, &memAllocInfo, nullptr, &customStuff.fbDepth.memory));
+	vkBindImageMemory(device, customStuff.fbDepth.image, customStuff.fbDepth.memory, 0);
+
+	// Create image view for the MSAA target
+	imageViewCI.image = customStuff.fbDepth.image;
+	imageViewCI.viewType = VK_IMAGE_VIEW_TYPE_2D;
+	imageViewCI.format = depthFormat;
+	imageViewCI.components.r = VK_COMPONENT_SWIZZLE_R;
+	imageViewCI.components.g = VK_COMPONENT_SWIZZLE_G;
+	imageViewCI.components.b = VK_COMPONENT_SWIZZLE_B;
+	imageViewCI.components.a = VK_COMPONENT_SWIZZLE_A;
+	imageViewCI.subresourceRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT;
+	imageViewCI.subresourceRange.levelCount = 1;
+	imageViewCI.subresourceRange.layerCount = 1;
+	VK_CHECK_RESULT(vkCreateImageView(device, &imageViewCI, nullptr, &customStuff.fbDepth.view));
+	
+	VkImageView attachments[2];
+
+	attachments[0] = customStuff.fbColor.view;
+	attachments[1] = customStuff.fbDepth.view;
+	
+	VkFramebufferCreateInfo fbci{};
+	fbci.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
+	fbci.pNext = NULL;
+	fbci.renderPass = renderPass;
+	fbci.attachmentCount = 2;
+	fbci.pAttachments = attachments;
+	fbci.width = SCREENSHOT_WIDTH;
+	fbci.height = SCREENSHOT_HEIGHT;
+	fbci.layers = 1;
+
+	VK_CHECK_RESULT(vkCreateFramebuffer(device, &fbci, nullptr, &customStuff.framebuffer));
+
+	VkCommandBufferAllocateInfo cbai;
+	cbai.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+	cbai.pNext = nullptr;
+	cbai.commandPool = cmdPool;
+	cbai.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+	cbai.commandBufferCount = 1;
+
+	VK_CHECK_RESULT(vkAllocateCommandBuffers(device, &cbai, &customStuff.commandBuffer));
+
+	customStuff.commandBuffer = vulkanDevice->createCommandBuffer(VK_COMMAND_BUFFER_LEVEL_PRIMARY, false);
+	customStuff.secondCommandBuffer = vulkanDevice->createCommandBuffer(VK_COMMAND_BUFFER_LEVEL_PRIMARY, false);
+	std::cout << "Completed custom setup" << std::endl;
+    }
 
 	/*
 		Update ImGui user interface
@@ -1979,8 +2447,11 @@ public:
 		submitInfo.pCommandBuffers = &commandBuffers[currentBuffer];
 		submitInfo.commandBufferCount = 1;
 		VK_CHECK_RESULT(vkQueueSubmit(queue, 1, &submitInfo, waitFences[frameIndex]));
-
+		
 		VkResult present = swapChain.queuePresent(queue, currentBuffer, renderCompleteSemaphores[frameIndex]);
+		
+		// renderCustom();
+		
 		if (!((present == VK_SUCCESS) || (present == VK_SUBOPTIMAL_KHR))) {
 			if (present == VK_ERROR_OUT_OF_DATE_KHR) {
 				windowResize();

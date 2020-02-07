@@ -51,6 +51,8 @@
 
 #include "imgui/imgui.h"
 
+// #define _VALIDATION
+
 class VulkanExampleBase
 {
 private:	
@@ -110,8 +112,8 @@ public:
 		bool validation = false;
 		bool fullscreen = false;
 		bool vsync = false;
-		bool multiSampling = true;
-		VkSampleCountFlagBits sampleCount = VK_SAMPLE_COUNT_4_BIT;
+		bool multiSampling = false;
+		VkSampleCountFlagBits sampleCount = VK_SAMPLE_COUNT_1_BIT;
 	} settings;
 	
 	struct DepthStencil {

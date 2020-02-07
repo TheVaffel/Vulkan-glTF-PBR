@@ -8,6 +8,11 @@
 
 #include "VulkanExampleBase.h"
 
+#include <chrono>
+#include <thread>
+
+// #define _VALIDATION
+
 std::vector<const char*> VulkanExampleBase::args;
 
 VKAPI_ATTR VkBool32 VKAPI_CALL debugMessageCallback(VkDebugReportFlagsEXT flags, VkDebugReportObjectTypeEXT objType, uint64_t srcObject, size_t location, int32_t msgCode, const char * pLayerPrefix, const char * pMsg, void * pUserData)
@@ -38,9 +43,7 @@ VkResult VulkanExampleBase::createInstance(bool enableValidation)
 	this->settings.validation = enableValidation;
 
 	// Validation can also be forced via a define
-#if defined(_VALIDATION)
-	this->settings.validation = true;
-#endif	
+	// #if defined(_VALIDATION)
 
 	VkApplicationInfo appInfo = {};
 	appInfo.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
@@ -69,12 +72,24 @@ VkResult VulkanExampleBase::createInstance(bool enableValidation)
 	instanceCreateInfo.pApplicationInfo = &appInfo;
 	if (instanceExtensions.size() > 0)
 	{
-		if (settings.validation) {
+	    if (settings.validation) {
 			instanceExtensions.push_back(VK_EXT_DEBUG_REPORT_EXTENSION_NAME);
-		}
+	    }
 		instanceCreateInfo.enabledExtensionCount = (uint32_t)instanceExtensions.size();
 		instanceCreateInfo.ppEnabledExtensionNames = instanceExtensions.data();
 	}
+
+	/* uint32_t layerCount;
+	vkEnumerateInstanceLayerProperties(&layerCount, nullptr);
+		
+	std::vector<VkLayerProperties> availableLayers(layerCount);
+	vkEnumerateInstanceLayerProperties(&layerCount, availableLayers.data());
+	std::cout << "About to output hot layers: " << std::endl;
+	for(auto& layer : availableLayers) {
+	    std::cout << "Layer available: " << layer.layerName << std::endl;
+	}
+	exit(0); */
+	
 	std::vector<const char *> validationLayerNames;
 	if (settings.validation) {
 #if !defined(__ANDROID__)
@@ -83,6 +98,8 @@ VkResult VulkanExampleBase::createInstance(bool enableValidation)
 		// Use `VK_LAYER_KHRONOS_valiation` for NDK r21 or later 
 		// https://developer.android.com/ndk/guides/graphics/validation-layer
 #if 1
+		
+		
 		validationLayerNames.push_back("VK_LAYER_GOOGLE_threading");
 		validationLayerNames.push_back("VK_LAYER_LUNARG_parameter_validation");
 		validationLayerNames.push_back("VK_LAYER_LUNARG_object_tracker");
@@ -96,7 +113,12 @@ VkResult VulkanExampleBase::createInstance(bool enableValidation)
 		instanceCreateInfo.enabledLayerCount = validationLayerNames.size();
 		instanceCreateInfo.ppEnabledLayerNames = validationLayerNames.data();
 	}
-	return vkCreateInstance(&instanceCreateInfo, nullptr, &instance);
+
+	VkResult res;
+	VK_CHECK_RESULT(res = vkCreateInstance(&instanceCreateInfo, nullptr, &instance));
+	std::cout << "Res = " << res << std::endl;
+	return res;
+	// return vkCreateInstance(&instanceCreateInfo, nullptr, &instance);
 }
 void VulkanExampleBase::prepare()
 {
@@ -304,6 +326,9 @@ void VulkanExampleBase::renderFrame()
 {
 	auto tStart = std::chrono::high_resolution_clock::now();
 
+	// Let the GPU cut some slack
+	std::this_thread::sleep_for(std::chrono::milliseconds(20));
+	
 	render();
 	frameCounter++;
 	auto tEnd = std::chrono::high_resolution_clock::now();
@@ -373,6 +398,10 @@ void VulkanExampleBase::renderLoop()
 		if (prepared)
 		{
 			auto tStart = std::chrono::high_resolution_clock::now();
+			
+			// Let the GPU cut some slack
+			std::this_thread::sleep_for(std::chrono::milliseconds(20));
+			
 			render();
 			frameCounter++;
 			auto tEnd = std::chrono::high_resolution_clock::now();
@@ -408,7 +437,11 @@ void VulkanExampleBase::renderLoop()
 #elif defined(_DIRECT2DISPLAY)
 	while (!quit)
 	{
-		auto tStart = std::chrono::high_resolution_clock::now();
+	        auto tStart = std::chrono::high_resolution_clock::now();
+	    
+		// Let the GPU cut some slack
+		std::this_thread::sleep_for(std::chrono::milliseconds(20));
+	    
 		render();
 		frameCounter++;
 		auto tEnd = std::chrono::high_resolution_clock::now();
@@ -428,6 +461,9 @@ void VulkanExampleBase::renderLoop()
 	{
 		auto tStart = std::chrono::high_resolution_clock::now();
 
+		// Let the GPU cut some slack
+		std::this_thread::sleep_for(std::chrono::milliseconds(20));
+		
 		while (wl_display_prepare_read(display) != 0)
 			wl_display_dispatch_pending(display);
 		wl_display_flush(display);
@@ -454,6 +490,10 @@ void VulkanExampleBase::renderLoop()
 	while (!quit)
 	{
 		auto tStart = std::chrono::high_resolution_clock::now();
+		
+		// Let the GPU cut some slack
+		std::this_thread::sleep_for(std::chrono::milliseconds(20));
+		
 		xcb_generic_event_t *event;
 		while ((event = xcb_poll_for_event(connection)))
 		{
@@ -1558,6 +1598,23 @@ void VulkanExampleBase::handleEvent(const xcb_generic_event_t *event)
 #endif
 
 void VulkanExampleBase::windowResized() {}
+
+void copyImage(VkImage src, VkImage dst) {
+    VkResult res;
+
+    VkCommandBufferBeginInfo cmd_begin = {};
+    cmd_begin.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+    cmd_begin.pNext = NULL;
+    cmd_begin.flags = 0;
+    cmd_begin.pInheritanceInfo = NULL;
+
+    //Ensure free command buffer is ready
+    /* do {
+	res = vkWaitForFences(device, 1, &free_command_buffer_fence, VK_TRUE, FENCE_TIMEOUT);
+	} while (res == VK_TIMEOUT); */
+
+    
+}
 
 void VulkanExampleBase::setupFrameBuffer()
 {

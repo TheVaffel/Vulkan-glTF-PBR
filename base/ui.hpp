@@ -182,6 +182,8 @@ public:
 
 		if (multiSampleCount > VK_SAMPLE_COUNT_1_BIT) {
 			multisampleStateCI.rasterizationSamples = multiSampleCount;
+		} else {
+		    multisampleStateCI.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
 		}
 
 		std::vector<VkDynamicState> dynamicStateEnables = {
