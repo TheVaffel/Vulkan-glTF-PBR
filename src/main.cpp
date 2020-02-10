@@ -39,6 +39,9 @@
 #include "VulkanUtils.hpp"
 #include "ui.hpp"
 
+#define STB_IMAGE_WRITE_IMPLEMENTATION
+#include "stb_image_write.h"
+
 #define GLM_FORCE_RADIANS
 #define GLM_FORCE_DEPTH_ZERO_TO_ONE
 #include <glm/glm.hpp>
@@ -116,6 +119,7 @@ public:
         struct {
 	    VkImage image;
 	    VkDeviceMemory memory;
+	    VkDeviceSize memorySize;
 	} reachableImage;
 
 	struct {
@@ -209,6 +213,8 @@ public:
 
 	~VulkanExample()
 	{
+	    
+	    destroyCustomStuff();
 		vkDestroyPipeline(device, pipelines.skybox, nullptr);
 		vkDestroyPipeline(device, pipelines.pbr, nullptr);
 		vkDestroyPipeline(device, pipelines.pbrAlphaBlend, nullptr);
@@ -241,6 +247,7 @@ public:
 		textures.prefilteredCube.destroy();
 		textures.lutBrdf.destroy();
 		textures.empty.destroy();
+
 
 		delete ui;
 	}
@@ -341,7 +348,7 @@ public:
 	vkCmdSetViewport(cb, 0, 1, &viewport);
 
 	VkRect2D scissor{};
-	scissor.extent = { width, height };
+	scissor.extent = { SCREENSHOT_WIDTH, SCREENSHOT_HEIGHT };
 	vkCmdSetScissor(cb, 0, 1, &scissor);
 
 	VkDeviceSize offsets[1] = { 0 };
@@ -1861,7 +1868,6 @@ public:
 		prepareUniformBuffers();
 		setupDescriptors();
 		preparePipelines();
-
 		setupCustomStuff();
 
 		ui = new UI(vulkanDevice, renderPass, queue, pipelineCache, settings.sampleCount);
@@ -1963,26 +1969,36 @@ public:
 	static bool firstTime = true;
 	if(!firstTime)
 	    return;
+	
 	firstTime = false;
+
+	std::cout << "Starting custom stuff rendering" << std::endl;
+
+	// Set camera perspective aspect to conform to draw dimensions
+	camera.setPerspective(45.0, float(SCREENSHOT_WIDTH) / SCREENSHOT_HEIGHT, 0.001f, 256.0f);
+	// shaderValuesParams.debugViewInputs = 2;
+	updateUniformBuffers();
+
+	UniformBufferSet currentUB = uniformBuffers[currentBuffer];
+	memcpy(currentUB.scene.mapped, &shaderValuesScene, sizeof(shaderValuesScene));
+	memcpy(currentUB.params.mapped, &shaderValuesParams, sizeof(shaderValuesParams));
+	memcpy(currentUB.skybox.mapped, &shaderValuesSkybox, sizeof(shaderValuesSkybox));
+
+	// Submit already-recorded-command
 	const VkPipelineStageFlags waitDstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
 	VkSubmitInfo si {};
 	si.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
 	si.pWaitDstStageMask = &waitDstStageMask;
-	si.pWaitSemaphores = &customStuff.copiedSemaphore;
-	si.waitSemaphoreCount = 1;
+	si.pWaitSemaphores = NULL;
+	si.waitSemaphoreCount = 0;
 	si.pSignalSemaphores = &customStuff.renderedSemaphore;
 	si.signalSemaphoreCount = 1;
 	si.pCommandBuffers = &customStuff.commandBuffer;
 	si.commandBufferCount = 1;
+
+	std::cout << "Submitting first command" << std::endl;
 	VK_CHECK_RESULT(vkQueueSubmit(queue, 1, &si, customStuff.fence));
-
-
-	// Wait until rendering is done
-	do{
-	    res = vkWaitForFences(device, 1, &customStuff.fence, VK_TRUE, FENCE_TIMEOUT);
-	} while (res == VK_TIMEOUT);
-
-	VK_CHECK_RESULT(vkResetFences(device, 1, &customStuff.fence));
+	std::cout << "Done" << std::endl;
 	
 	VkCommandBufferBeginInfo cmd_begin = {};
 	cmd_begin.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
@@ -1993,37 +2009,38 @@ public:
 	vkBeginCommandBuffer(customStuff.secondCommandBuffer, &cmd_begin);
 
 	cmdSetLayout(customStuff.secondCommandBuffer, customStuff.fbColor.image, VK_IMAGE_ASPECT_COLOR_BIT,
-		     VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
+		     VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
 	cmdSetLayout(customStuff.secondCommandBuffer, customStuff.reachableImage.image, VK_IMAGE_ASPECT_COLOR_BIT,
-		     VK_IMAGE_LAYOUT_OPTIMAL, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+		     VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
 
-	VkImageBlit region = {};
-	region.srcSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-	region.srcSubresource.mipLevel = 0;
-	region.srcSubresource.baseArrayLayer = 0;
-	region.srcSubresource.layerCount = 1;
-	region.srcOffsets[0].x = 0;
-	region.srcOffsets[0].y = 0;
-	region.srcOffsets[1].x = SCREENSHOT_WIDTH;
-	region.srcOffsets[1].y = SCREENSHOT_HEIGHT;
-	region.srcOffsets[1].z = 1;
 
-	region.dstSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-	region.dstSubresource.mipLevel = 0;
-	region.dstSubresource.baseArrayLayer = 0;
-	region.dstSubresource.layerCount = 1;
-	region.dstOffsets[0].x = 0;
-	region.dstOffsets[0].y = 0;
-	region.dstOffsets[1].x = SCREENSHOT_WIDTH;
-	region.dstOffsets[1].y = SCREENSHOT_HEIGHT;
-	region.dstOffsets[1].z = 1;
+	VkImageCopy ic;
+	ic.srcSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+	ic.srcSubresource.mipLevel = 0;
+	ic.srcSubresource.baseArrayLayer = 0;
+	ic.srcSubresource.layerCount = 1;
+	ic.srcOffset.x = 0;
+	ic.srcOffset.y = 0;
+	ic.srcOffset.z = 0;
+	ic.extent.width = SCREENSHOT_WIDTH;
+	ic.extent.height = SCREENSHOT_HEIGHT;
+	ic.extent.depth = 1;
+	
+	ic.dstSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+	ic.dstSubresource.mipLevel = 0;
+	ic.dstSubresource.baseArrayLayer = 0;
+	ic.dstSubresource.layerCount = 1;
+	ic.dstOffset.x = 0;
+	ic.dstOffset.y = 0;
+	ic.dstOffset.z = 0;
+	ic.extent.width = SCREENSHOT_WIDTH;
+	ic.extent.height = SCREENSHOT_HEIGHT;
+	ic.extent.depth = 1;
 
-	VkFilter filter = VK_FILTER_NEAREST;
-
-	vkCmdBlitImage(customStuff.secondCommandBuffer, customStuff.fbColor.image,
-		       VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, customStuff.reachableImage.image,
-		       VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region, filter);
-
+	vkCmdCopyImage(customStuff.secondCommandBuffer, customStuff.fbColor.image,
+		       VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+		       customStuff.reachableImage.image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &ic);
+		       
 
 	cmdSetLayout(customStuff.secondCommandBuffer, customStuff.fbColor.image, VK_IMAGE_ASPECT_COLOR_BIT,
 		     VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
@@ -2045,23 +2062,173 @@ public:
 	submitInfo.signalSemaphoreCount = 0;
 	submitInfo.pSignalSemaphores = NULL;
 
+	
+	// Wait until rendering is done
+
+	VkResult res;
+	do{
+	    res = vkWaitForFences(device, 1, &customStuff.fence, VK_TRUE, 10000);
+	} while (res == VK_TIMEOUT);
+	
+	VK_CHECK_RESULT(vkResetFences(device, 1, &customStuff.fence));
+
+	std::cout << "Submitting second command" << std::endl;
+	VK_CHECK_RESULT(vkQueueSubmit(queue, 1, &submitInfo, customStuff.fence));
+	std::cout << "Submitted second command" << std::endl;
+
+	VkImageSubresource subres{};
+	subres.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+	subres.mipLevel = 0;
+	subres.arrayLayer = 0;
+	VkSubresourceLayout srl;
+	
+	vkGetImageSubresourceLayout(device, customStuff.reachableImage.image, &subres, &srl);
+
+
+	// Reset camera
+	camera.setPerspective(45.0, (float)width / (float)height, 0.001f, 256.0f);
+	updateUniformBuffers();
+	
+	// Wait until image copy is done
+	
+	do{
+	    res = vkWaitForFences(device, 1, &customStuff.fence, VK_TRUE, 10000);
+	} while (res == VK_TIMEOUT);
+	
+	VK_CHECK_RESULT(vkResetFences(device, 1, &customStuff.fence));
+	
+	uint8_t* tmp;
+	
+	VK_CHECK_RESULT(vkMapMemory(device, customStuff.reachableImage.memory, 0, VK_WHOLE_SIZE, 0, (void**)&tmp));
+
+	tmp += srl.offset;
+
+	uint32_t data[SCREENSHOT_HEIGHT * SCREENSHOT_WIDTH];
+
+	uint32_t* dataP = (uint32_t*)data;
+	for(uint32_t i = 0; i < SCREENSHOT_HEIGHT; i++) {
+	    uint32_t *tp = (uint32_t*)tmp;
+	    for(uint32_t j = 0; j < SCREENSHOT_WIDTH; j++) {
+		uint32_t dd = *tp;
+		uint32_t ddd = (((dd & 255) << 16) | (dd & (255 << 8)) | ((dd >> 16) & 255)) | (255 << 24);
+		*dataP = ddd;
+		tp++;
+		dataP++;
+	    }
+	    tmp += srl.rowPitch;
+	}
+
+	vkUnmapMemory(device, customStuff.reachableImage.memory);
+	
+	std::string filename = "screenshot.png";
+	
+	stbi_write_png(filename.c_str(), SCREENSHOT_WIDTH, SCREENSHOT_HEIGHT, 4, data, SCREENSHOT_WIDTH * 4);
+	
 	/*
 	 * TODO: Submit to queue, wait for finish, memory map reachableImage, copy image to host, write as image 
 	 * Profit..?
 	 */
+
+	std::cout << "Ending custom rendering, image saved to " << filename << std::endl;
+    }
+
+    void destroyCustomStuff() {
+	vkDestroyFence(device, customStuff.fence, nullptr);
+	vkDestroySemaphore(device, customStuff.renderedSemaphore, nullptr);
+	vkDestroySemaphore(device, customStuff.copiedSemaphore, nullptr);
+
+	vkDestroyImage(device, customStuff.reachableImage.image, nullptr);
+	vkFreeMemory(device, customStuff.reachableImage.memory, nullptr);
+
+	vkDestroyImageView(device, customStuff.fbColor.view, nullptr);
+	vkDestroyImage(device, customStuff.fbColor.image, nullptr);
+	vkFreeMemory(device, customStuff.fbColor.memory, nullptr);
+
+	vkDestroyImageView(device, customStuff.fbDepth.view, nullptr);
+	vkDestroyImage(device, customStuff.fbDepth.image, nullptr);
+	vkFreeMemory(device, customStuff.fbDepth.memory, nullptr);
 	
+	vkDestroyFramebuffer(device, customStuff.framebuffer, nullptr);
     }
 
     // Function for setting up screenshot-related stuff
     void setupCustomStuff() {
 
+	// Create RenderPass
+	VkAttachmentDescription atts[2] = {};
+	atts[0].format = swapChain.colorFormat;
+	atts[0].samples = VK_SAMPLE_COUNT_1_BIT;
+	atts[0].loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+	atts[0].storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+	atts[0].stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+	atts[0].stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+	atts[0].initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+	atts[0].finalLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+
+	atts[1].format = depthFormat;
+	atts[1].samples = VK_SAMPLE_COUNT_1_BIT;
+	atts[1].loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+	atts[1].storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+	atts[1].stencilLoadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+	atts[1].stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+	atts[1].initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+	atts[1].finalLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+
+	VkAttachmentReference cr = {};
+	cr.attachment = 0;
+	cr.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+
+	VkAttachmentReference dr = {};
+	dr.attachment = 1;
+	dr.layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+
+	VkSubpassDescription sd = {};
+	sd.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
+	sd.colorAttachmentCount = 1;
+	sd.pColorAttachments = &cr;
+	sd.pDepthStencilAttachment = &dr;
+	sd.inputAttachmentCount = 0;
+	sd.pInputAttachments = nullptr;
+	sd.preserveAttachmentCount = 0;
+	sd.pPreserveAttachments = nullptr;
+	sd.pResolveAttachments = nullptr;
+
+	VkSubpassDependency deps[2];
+	deps[0].srcSubpass = VK_SUBPASS_EXTERNAL;
+	deps[0].dstSubpass = 0;
+	deps[0].srcStageMask = VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT;
+	deps[0].dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+	deps[0].srcAccessMask = VK_ACCESS_MEMORY_READ_BIT;
+	deps[0].dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+	deps[0].dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT;
+
+	deps[1].srcSubpass = 0;
+	deps[1].dstSubpass = VK_SUBPASS_EXTERNAL;
+	deps[1].srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+	deps[1].dstStageMask = VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT;
+	deps[1].srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+	deps[1].dstAccessMask = VK_ACCESS_MEMORY_READ_BIT;
+	deps[1].dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT;
+
+	VkRenderPassCreateInfo rpci{};
+	rpci.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
+	rpci.attachmentCount = static_cast<uint32_t>(2);
+	rpci.pAttachments = atts;
+	rpci.subpassCount = 1;
+	rpci.pSubpasses = &sd;
+	rpci.dependencyCount = static_cast<uint32_t>(2);
+	rpci.pDependencies = deps;
+	VK_CHECK_RESULT(vkCreateRenderPass(device, &rpci, nullptr, &customStuff.renderPass));
+
+	// Create fence
 	VkFenceCreateInfo fci{};
 	fci.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
 	fci.pNext = nullptr;
-	fci.flags = VK_FENCE_CREATE_SIGNALED_BIT;
+	fci.flags = 0;
 
 	VK_CHECK_RESULT(vkCreateFence(device, &fci, nullptr, &customStuff.fence));
 
+	// Create semaphores
 	VkSemaphoreCreateInfo sci{};
 	sci.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
 	sci.pNext = nullptr;
@@ -2070,6 +2237,7 @@ public:
 	VK_CHECK_RESULT(vkCreateSemaphore(device, &sci, nullptr, &customStuff.renderedSemaphore));
 	VK_CHECK_RESULT(vkCreateSemaphore(device, &sci, nullptr, &customStuff.copiedSemaphore));
 
+	// Create host-reachable image (with memory)
 	VkImageCreateInfo ici{};
 	ici.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
 	ici.imageType = VK_IMAGE_TYPE_2D;
@@ -2100,10 +2268,12 @@ public:
 	VK_CHECK_RESULT(vkAllocateMemory(device, &rMemAllocInfo, nullptr, &customStuff.reachableImage.memory));
 	vkBindImageMemory(device, customStuff.reachableImage.image, customStuff.reachableImage.memory, 0);
 
+	customStuff.reachableImage.memorySize = rMemReqs.size;
+
 
 	
 	// Mainly copied from the setupFrameBuffer function
-	
+	// Create framebuffer with depth and color images
 	VkImageCreateInfo imageCI{};
 	imageCI.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
 	imageCI.imageType = VK_IMAGE_TYPE_2D;
@@ -2192,7 +2362,7 @@ public:
 	VkFramebufferCreateInfo fbci{};
 	fbci.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
 	fbci.pNext = NULL;
-	fbci.renderPass = renderPass;
+	fbci.renderPass = customStuff.renderPass;
 	fbci.attachmentCount = 2;
 	fbci.pAttachments = attachments;
 	fbci.width = SCREENSHOT_WIDTH;
@@ -2213,7 +2383,7 @@ public:
 	customStuff.commandBuffer = vulkanDevice->createCommandBuffer(VK_COMMAND_BUFFER_LEVEL_PRIMARY, false);
 	customStuff.secondCommandBuffer = vulkanDevice->createCommandBuffer(VK_COMMAND_BUFFER_LEVEL_PRIMARY, false);
 	std::cout << "Completed custom setup" << std::endl;
-    }
+	} 
 
 	/*
 		Update ImGui user interface
@@ -2450,7 +2620,7 @@ public:
 		
 		VkResult present = swapChain.queuePresent(queue, currentBuffer, renderCompleteSemaphores[frameIndex]);
 		
-		// renderCustom();
+		renderCustom();
 		
 		if (!((present == VK_SUCCESS) || (present == VK_SUBOPTIMAL_KHR))) {
 			if (present == VK_ERROR_OUT_OF_DATE_KHR) {

@@ -389,6 +389,8 @@ void main()
 		outColor = SRGBtoLINEAR(outColor);
 	}
 
+	outColor.rgb = n;
+
 	// PBR equation debug visualization
 	// "none", "Diff (l,n)", "F (l,h)", "G (l,v,h)", "D (h)", "Specular"
 	if (uboParams.debugViewEquation > 0.0) {
