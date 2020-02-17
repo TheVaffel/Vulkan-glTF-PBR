@@ -12,6 +12,9 @@
 #include <glm/gtc/quaternion.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 
+#define GLM_ENABLE_EXPERIMENTAL
+#include <glm/ext.hpp>
+
 class Camera
 {
 private:
@@ -27,11 +30,11 @@ private:
 		rotM = glm::rotate(rotM, glm::radians(rotation.y), glm::vec3(0.0f, 1.0f, 0.0f));
 		rotM = glm::rotate(rotM, glm::radians(rotation.z), glm::vec3(0.0f, 0.0f, 1.0f));
 
-		transM = glm::translate(glm::mat4(1.0f), position * glm::vec3(1.0f, 1.0f, -1.0f));
+		transM = glm::translate(glm::mat4(1.0f), position * glm::vec3(-1.0f, -1.0f, 1.0f));
 
 		if (type == CameraType::firstperson)
 		{
-			matrices.view = rotM * transM;
+		    matrices.view = rotM * transM;
 		}
 		else
 		{

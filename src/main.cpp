@@ -1831,7 +1831,8 @@ public:
 	{
 		VulkanExampleBase::prepare();
 
-		camera.type = Camera::CameraType::lookat;
+		// camera.type = Camera::CameraType::lookat;
+		camera.type = Camera::CameraType::firstperson;
 
 		camera.setPerspective(45.0f, (float)width / (float)height, 0.001f, 256.0f);
 		camera.rotationSpeed = 0.25f;
@@ -2588,7 +2589,6 @@ public:
 		    std::pair<glm::vec3, glm::vec3> decomp = settings.pathViews[count];
 		    camera.setRotation(decomp.first);
 		    camera.setPosition(decomp.second);
-
 		}
 		
 		updateOverlay();
