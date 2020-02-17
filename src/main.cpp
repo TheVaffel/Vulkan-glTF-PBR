@@ -133,7 +133,7 @@ public:
 	VkSemaphore copiedSemaphore;
 	VkFence fence;
 	
-	VkCommandBuffer commandBuffer;
+	VkCommandBuffer commandBuffers[4]; // Assume we don't have more than 4 swapchain buffers
 	VkCommandBuffer secondCommandBuffer;
 	VkRenderPass renderPass;
     } customStuff;
@@ -260,11 +260,11 @@ public:
 				if (primitive->material.alphaMode == alphaMode) {
 
 					const std::vector<VkDescriptorSet> descriptorsets = {
-											     descriptorSets[cbIndex == -1 ? 0 : cbIndex].scene,
+											     descriptorSets[cbIndex <= -1 ? - cbIndex - 1 : cbIndex].scene,
 						primitive->material.descriptorSet,
 						node->mesh->uniformBuffer.descriptorSet,
 					};
-					vkCmdBindDescriptorSets(cbIndex == -1 ? customStuff.commandBuffer : commandBuffers[cbIndex], VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout, 0, static_cast<uint32_t>(descriptorsets.size()), descriptorsets.data(), 0, NULL);
+					vkCmdBindDescriptorSets(cbIndex <= -1 ? customStuff.commandBuffers[- cbIndex - 1]: commandBuffers[cbIndex], VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout, 0, static_cast<uint32_t>(descriptorsets.size()), descriptorsets.data(), 0, NULL);
 
 					// Pass material parameters as push constants
 					PushConstBlockMaterial pushConstBlockMaterial{};					
@@ -299,12 +299,12 @@ public:
 						pushConstBlockMaterial.specularFactor = glm::vec4(primitive->material.extension.specularFactor, 1.0f);
 					}
 
-					vkCmdPushConstants(cbIndex == -1 ? customStuff.commandBuffer : commandBuffers[cbIndex], pipelineLayout, VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(PushConstBlockMaterial), &pushConstBlockMaterial);
+					vkCmdPushConstants(cbIndex <= -1 ? customStuff.commandBuffers[- cbIndex - 1]: commandBuffers[cbIndex], pipelineLayout, VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(PushConstBlockMaterial), &pushConstBlockMaterial);
 
 					if (primitive->hasIndices) {
-						vkCmdDrawIndexed(cbIndex == -1 ? customStuff.commandBuffer : commandBuffers[cbIndex], primitive->indexCount, 1, primitive->firstIndex, 0, 0);
+						vkCmdDrawIndexed(cbIndex <= -1 ? customStuff.commandBuffers[- cbIndex - 1]: commandBuffers[cbIndex], primitive->indexCount, 1, primitive->firstIndex, 0, 0);
 					} else {
-						vkCmdDraw(cbIndex == -1 ? customStuff.commandBuffer : commandBuffers[cbIndex], primitive->vertexCount, 1, 0, 0);
+						vkCmdDraw(cbIndex <= -1 ? customStuff.commandBuffers[- cbIndex - 1]: commandBuffers[cbIndex], primitive->vertexCount, 1, 0, 0);
 					}
 				}
 			}
@@ -315,7 +315,7 @@ public:
 		}
 	}
 
-    void recordCustomCommandBuffer() {
+    void recordCustomCommandBuffer(int ccb) {
 	VkCommandBufferBeginInfo cmdBufferBeginInfo{};
 	cmdBufferBeginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
 	VkClearValue clearValues[2];
@@ -333,7 +333,7 @@ public:
 	rpbi.pClearValues = clearValues;
 	rpbi.framebuffer = customStuff.framebuffer;
 
-	VkCommandBuffer cb = customStuff.commandBuffer;
+	VkCommandBuffer cb = customStuff.commandBuffers[ccb];
 
 	std::cout << "Bouta begin command buffer" << std::endl;
 	VK_CHECK_RESULT(vkBeginCommandBuffer(cb, &cmdBufferBeginInfo));
@@ -354,7 +354,7 @@ public:
 	VkDeviceSize offsets[1] = { 0 };
 
 	if (displayBackground) {
-	    vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout, 0, 1, &descriptorSets[0].skybox, 0, nullptr);
+	    vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout, 0, 1, &descriptorSets[ccb].skybox, 0, nullptr);
 	    vkCmdBindPipeline(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelines.skybox);
 	    models.skybox.draw(cb);
 	}
@@ -369,15 +369,15 @@ public:
 	}
 
 	for (auto node : model.nodes) {
-	    renderNode(node, -1, vkglTF::Material::ALPHAMODE_OPAQUE);
+	    renderNode(node, - ccb - 1, vkglTF::Material::ALPHAMODE_OPAQUE);
 	}
 	for (auto node : model.nodes) {
-	    renderNode(node, -1, vkglTF::Material::ALPHAMODE_MASK);
+	    renderNode(node, - ccb - 1, vkglTF::Material::ALPHAMODE_MASK);
 	}
 
 	vkCmdBindPipeline(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelines.pbrAlphaBlend);
 	for (auto node : model.nodes) {
-	    renderNode(node, -1, vkglTF::Material::ALPHAMODE_BLEND);
+	    renderNode(node, - ccb - 1, vkglTF::Material::ALPHAMODE_BLEND);
 	}
 
 	vkCmdEndRenderPass(cb);
@@ -468,9 +468,10 @@ public:
 
 			vkCmdEndRenderPass(currentCB);
 			VK_CHECK_RESULT(vkEndCommandBuffer(currentCB));
+			recordCustomCommandBuffer(i);
+					
 		}
 
-		recordCustomCommandBuffer();
 	}
 
 	void loadScene(std::string filename)
@@ -514,7 +515,13 @@ public:
 
 		textures.empty.loadFromFile(assetpath + "textures/empty.ktx", VK_FORMAT_R8G8B8A8_UNORM, vulkanDevice, queue);
 
-		std::string sceneFile = assetpath + "models/DamagedHelmet/glTF-Embedded/DamagedHelmet.gltf";
+		std::string sceneFile;
+		if(settings.sceneFile.length()) {
+		    sceneFile = settings.sceneFile;
+		} else {
+		    sceneFile = assetpath + "models/DamagedHelmet/glTF-Embedded/DamagedHelmet.gltf";
+		}
+		
 		std::string envMapFile = assetpath + "environments/papermill.ktx";
 		for (size_t i = 0; i < args.size(); i++) {
 			if (std::string(args[i]).find(".gltf") != std::string::npos) {
@@ -1965,24 +1972,15 @@ public:
 	vkCmdPipelineBarrier(cmd, srcStages, destStages, 0, 0, NULL, 0, NULL, 1, &image_memory_barrier);
     }
 
-    void renderCustom() {
-	static bool firstTime = true;
-	if(!firstTime)
+    void renderCustom(int count) {
+
+	if(!settings.followPath) {
 	    return;
+	}
 	
-	firstTime = false;
-
-	std::cout << "Starting custom stuff rendering" << std::endl;
-
 	// Set camera perspective aspect to conform to draw dimensions
 	camera.setPerspective(45.0, float(SCREENSHOT_WIDTH) / SCREENSHOT_HEIGHT, 0.001f, 256.0f);
-	// shaderValuesParams.debugViewInputs = 2;
 	updateUniformBuffers();
-
-	UniformBufferSet currentUB = uniformBuffers[currentBuffer];
-	memcpy(currentUB.scene.mapped, &shaderValuesScene, sizeof(shaderValuesScene));
-	memcpy(currentUB.params.mapped, &shaderValuesParams, sizeof(shaderValuesParams));
-	memcpy(currentUB.skybox.mapped, &shaderValuesSkybox, sizeof(shaderValuesSkybox));
 
 	// Submit already-recorded-command
 	const VkPipelineStageFlags waitDstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
@@ -1991,14 +1989,12 @@ public:
 	si.pWaitDstStageMask = &waitDstStageMask;
 	si.pWaitSemaphores = NULL;
 	si.waitSemaphoreCount = 0;
-	si.pSignalSemaphores = &customStuff.renderedSemaphore;
-	si.signalSemaphoreCount = 1;
-	si.pCommandBuffers = &customStuff.commandBuffer;
+	si.pSignalSemaphores = NULL;
+	si.signalSemaphoreCount = 0;
+	si.pCommandBuffers = &customStuff.commandBuffers[currentBuffer];
 	si.commandBufferCount = 1;
 
-	std::cout << "Submitting first command" << std::endl;
 	VK_CHECK_RESULT(vkQueueSubmit(queue, 1, &si, customStuff.fence));
-	std::cout << "Done" << std::endl;
 	
 	VkCommandBufferBeginInfo cmd_begin = {};
 	cmd_begin.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
@@ -2009,7 +2005,7 @@ public:
 	vkBeginCommandBuffer(customStuff.secondCommandBuffer, &cmd_begin);
 
 	cmdSetLayout(customStuff.secondCommandBuffer, customStuff.fbColor.image, VK_IMAGE_ASPECT_COLOR_BIT,
-		     VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
+		     VK_IMAGE_LAYOUT_PRESENT_SRC_KHR, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
 	cmdSetLayout(customStuff.secondCommandBuffer, customStuff.reachableImage.image, VK_IMAGE_ASPECT_COLOR_BIT,
 		     VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
 
@@ -2072,9 +2068,7 @@ public:
 	
 	VK_CHECK_RESULT(vkResetFences(device, 1, &customStuff.fence));
 
-	std::cout << "Submitting second command" << std::endl;
 	VK_CHECK_RESULT(vkQueueSubmit(queue, 1, &submitInfo, customStuff.fence));
-	std::cout << "Submitted second command" << std::endl;
 
 	VkImageSubresource subres{};
 	subres.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
@@ -2119,17 +2113,15 @@ public:
 	}
 
 	vkUnmapMemory(device, customStuff.reachableImage.memory);
-	
-	std::string filename = "screenshot.png";
+
+	std::ostringstream oss;
+	oss << "frame" << std::setfill('0') << std::setw(5) << count << ".png";
+	std::string filename = oss.str();
 	
 	stbi_write_png(filename.c_str(), SCREENSHOT_WIDTH, SCREENSHOT_HEIGHT, 4, data, SCREENSHOT_WIDTH * 4);
-	
-	/*
-	 * TODO: Submit to queue, wait for finish, memory map reachableImage, copy image to host, write as image 
-	 * Profit..?
-	 */
 
-	std::cout << "Ending custom rendering, image saved to " << filename << std::endl;
+	count++;
+	std::cout << "Image saved to " << filename << std::endl;
     }
 
     void destroyCustomStuff() {
@@ -2376,12 +2368,13 @@ public:
 	cbai.pNext = nullptr;
 	cbai.commandPool = cmdPool;
 	cbai.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-	cbai.commandBufferCount = 1;
+	cbai.commandBufferCount = commandBuffers.size();
 
-	VK_CHECK_RESULT(vkAllocateCommandBuffers(device, &cbai, &customStuff.commandBuffer));
+	VK_CHECK_RESULT(vkAllocateCommandBuffers(device, &cbai, customStuff.commandBuffers));
 
-	customStuff.commandBuffer = vulkanDevice->createCommandBuffer(VK_COMMAND_BUFFER_LEVEL_PRIMARY, false);
+	// customStuff.commandBuffers = vulkanDevice->createCommandBuffer(VK_COMMAND_BUFFER_LEVEL_PRIMARY, false);
 	customStuff.secondCommandBuffer = vulkanDevice->createCommandBuffer(VK_COMMAND_BUFFER_LEVEL_PRIMARY, false);
+	
 	std::cout << "Completed custom setup" << std::endl;
 	} 
 
@@ -2586,6 +2579,18 @@ public:
 			return;
 		}
 
+		
+		static int count = 0;
+		if(settings.followPath) {
+		    if(count >= settings.pathViews.size())
+			exit(0);
+	    
+		    std::pair<glm::vec3, glm::vec3> decomp = settings.pathViews[count];
+		    camera.setRotation(decomp.first);
+		    camera.setPosition(decomp.second);
+
+		}
+		
 		updateOverlay();
 
 		VK_CHECK_RESULT(vkWaitForFences(device, 1, &waitFences[frameIndex], VK_TRUE, UINT64_MAX));
@@ -2620,7 +2625,8 @@ public:
 		
 		VkResult present = swapChain.queuePresent(queue, currentBuffer, renderCompleteSemaphores[frameIndex]);
 		
-		renderCustom();
+		renderCustom(count);
+		count++;
 		
 		if (!((present == VK_SUCCESS) || (present == VK_SUBOPTIMAL_KHR))) {
 			if (present == VK_ERROR_OUT_OF_DATE_KHR) {

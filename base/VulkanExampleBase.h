@@ -111,9 +111,12 @@ public:
 	struct Settings {
 		bool validation = false;
 		bool fullscreen = false;
-		bool vsync = false;
+	    bool vsync = false;
 		bool multiSampling = false;
 		VkSampleCountFlagBits sampleCount = VK_SAMPLE_COUNT_1_BIT;
+	    bool followPath = false;
+	    std::vector<std::pair<glm::vec3, glm::vec3> > pathViews;
+	    std::string sceneFile;
 	} settings;
 	
 	struct DepthStencil {

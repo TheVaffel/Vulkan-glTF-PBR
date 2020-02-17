@@ -8,6 +8,9 @@
 
 #include "VulkanExampleBase.h"
 
+#include "pathreadc.hpp"
+#include <xcb/xcb_icccm.h>
+
 #include <chrono>
 #include <thread>
 
@@ -89,8 +92,17 @@ VkResult VulkanExampleBase::createInstance(bool enableValidation)
 	    std::cout << "Layer available: " << layer.layerName << std::endl;
 	}
 	exit(0); */
-	
-	std::vector<const char *> validationLayerNames;
+
+	uint32_t count;
+	vkEnumerateInstanceExtensionProperties(nullptr, &count, nullptr); //get number of extensions
+	std::vector<VkExtensionProperties> extensions(count);
+	vkEnumerateInstanceExtensionProperties(nullptr, &count, extensions.data()); //populate buffer
+	for(auto& ext : extensions) {
+		std::cout << "Extension available: " << ext.extensionName << std::endl;
+	}
+
+	std::vector<const char*> validationLayerNames;
+
 	if (settings.validation) {
 #if !defined(__ANDROID__)
 		validationLayerNames.push_back("VK_LAYER_LUNARG_standard_validation");
@@ -500,6 +512,8 @@ void VulkanExampleBase::renderLoop()
 			handleEvent(event);
 			free(event);
 		}
+		// Camera is updated in event loop above here,
+		// set camera to path here for profit
 		render();
 		frameCounter++;
 		auto tEnd = std::chrono::high_resolution_clock::now();
@@ -509,7 +523,7 @@ void VulkanExampleBase::renderLoop()
 		fpsTimer += (float)tDiff;
 		if (fpsTimer > 1000.0f)
 		{
-			xcb_change_property(connection, XCB_PROP_MODE_REPLACE,
+		    xcb_change_property(connection, XCB_PROP_MODE_REPLACE,
 				window, XCB_ATOM_WM_NAME, XCB_ATOM_STRING, 8,
 				title.size(), title.c_str());
 			lastFPS = (float)frameCounter * (1000.0f / fpsTimer);
@@ -544,6 +558,15 @@ VulkanExampleBase::VulkanExampleBase()
 		if ((args[i] == std::string("-h")) || (args[i] == std::string("--height"))) {
 			uint32_t h = strtol(args[i + 1], &numConvPtr, 10);
 			if (numConvPtr != args[i + 1]) { height = h; };
+		}
+		if ((args[i] == std::string("-p")) || (args[i] == std::string("--path"))) {
+		    settings.followPath = true;
+		    std::string pathFile = args[i + 1];
+		    std::cout << "pathFile: " << pathFile << std::endl;
+		    settings.pathViews = getPathDecomposed(pathFile);
+		}
+		if ((args[i] == std::string("-s")) || (args[i] == std::string("--scene"))) {
+		    settings.sceneFile = args[i + 1];
 		}
 	}
 	
@@ -1447,6 +1470,12 @@ xcb_window_t VulkanExampleBase::setupWindow()
 	xcb_change_property(connection, XCB_PROP_MODE_REPLACE,
 		window, XCB_ATOM_WM_NAME, XCB_ATOM_STRING, 8,
 		title.size(), title.c_str());
+
+	// Set non-resizable
+	xcb_size_hints_t hints;
+	xcb_icccm_size_hints_set_min_size(&hints, width, height);
+	xcb_icccm_size_hints_set_max_size(&hints, width, height);
+	xcb_icccm_set_wm_size_hints(connection, window, XCB_ATOM_WM_NORMAL_HINTS, &hints);
 
 	free(reply);
 
