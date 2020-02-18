@@ -1788,14 +1788,18 @@ public:
 		shaderValuesScene.view = camera.matrices.view;
 		
 		// Center and scale model
-		float scale = (1.0f / std::max(models.scene.aabb[0][0], std::max(models.scene.aabb[1][1], models.scene.aabb[2][2]))) * 0.5f;
-		glm::vec3 translate = -glm::vec3(models.scene.aabb[3][0], models.scene.aabb[3][1], models.scene.aabb[3][2]);
-		translate += -0.5f * glm::vec3(models.scene.aabb[0][0], models.scene.aabb[1][1], models.scene.aabb[2][2]);
+		// float scale = (1.0f / std::max(models.scene.aabb[0][0], std::max(models.scene.aabb[1][1], models.scene.aabb[2][2]))) * 0.5f;
+		// Nope
+		float scale = 1.0f;
+		// And nope
+		//glm::vec3 translate = -glm::vec3(models.scene.aabb[3][0], models.scene.aabb[3][1], models.scene.aabb[3][2]);
+		// translate += -0.5f * glm::vec3(models.scene.aabb[0][0], models.scene.aabb[1][1], models.scene.aabb[2][2]);
+		glm::vec3 translate = glm::vec3(0.0f);
 
 		shaderValuesScene.model = glm::mat4(1.0f);
-		shaderValuesScene.model[0][0] = scale;
+		shaderValuesScene.model[0][0] = - scale; // Mirror fix
 		shaderValuesScene.model[1][1] = scale;
-		shaderValuesScene.model[2][2] = scale;
+		shaderValuesScene.model[2][2] = - scale; // Se if we can fix mirroring issue
 		shaderValuesScene.model = glm::translate(shaderValuesScene.model, translate);
 
 		shaderValuesScene.camPos = glm::vec3(
@@ -2116,7 +2120,7 @@ public:
 	vkUnmapMemory(device, customStuff.reachableImage.memory);
 
 	std::ostringstream oss;
-	oss << "frame" << std::setfill('0') << std::setw(5) << count << ".png";
+	oss << "feature_frame" << std::setfill('0') << std::setw(5) << count << ".png";
 	std::string filename = oss.str();
 	
 	stbi_write_png(filename.c_str(), SCREENSHOT_WIDTH, SCREENSHOT_HEIGHT, 4, data, SCREENSHOT_WIDTH * 4);
@@ -2589,6 +2593,7 @@ public:
 		    std::pair<glm::vec3, glm::vec3> decomp = settings.pathViews[count];
 		    camera.setRotation(decomp.first);
 		    camera.setPosition(decomp.second);
+		    // std::cout << "Rendering with camera eye at " << glm::to_string(camera.position) << std::endl;
 		}
 		
 		updateOverlay();
