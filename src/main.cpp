@@ -57,7 +57,15 @@
   Util function(s)
 */
 
-void normalize_image_buffer(float* data, int width, int height) {
+void convert_to_uint8(float* data, uint8_t* out, int width, int height) {
+    // Assume float data contains components within [0.0, 1.0]
+    for(int i = 0; i < width * height * 4; i++) {
+	out[i] = (uint8_t)(data[i] * 255);
+    }
+}
+
+// Normalize float values to the range [0, 255], separately for each channel
+void normalize_image_buffer(float* data, uint8_t* out, int width, int height) {
     float biggest[3] = {-1e6, -1e6, -1e6};
     float smallest[3] = {1e6, 1e6, 1e6};
     for(int i = 0; i < width * height; i++) {
@@ -67,18 +75,25 @@ void normalize_image_buffer(float* data, int width, int height) {
 	}
     }
 
+    float invdiffs[3];
+    
     for(int i = 0; i < 3; i++) {
 	std::cout << "Smallest: " << smallest[i] << "\nBiggest: " << biggest[i] << std::endl;
+	invdiffs[i] = 1.0f / (biggest[i] - smallest[i]);
     }
-    exit(0);
 
-    /* for(int i = 0; i < width * height; i++) {
-	int ll = 0;
+
+    for(int i = 0; i < width * height; i++) {
+	/* int ll = 0;
 	for(int j = 0 ; j < 3; j++) {
 	    ll |= (((data[i] >> (8 * j)) & 255) * 255 / biggest[j]) << (8 * j);
 	}
-	data[i] = ll | (255 << 24);
-	} */
+	data[i] = ll | (255 << 24); */
+	for(int j = 0; j < 3; j++) {
+	    out[4 * i + j] = (uint8_t)((data[4 * i + j] - smallest[j]) * invdiffs[j] * 255);
+	}
+	out[4 * i + 3] = 255;
+    }
 }
 
 /*
@@ -336,9 +351,7 @@ public:
 					vkCmdPushConstants(cbIndex <= -1 ? customStuff.commandBuffers[- cbIndex - 1]: commandBuffers[cbIndex], pipelineLayout, VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(PushConstBlockMaterial), &pushConstBlockMaterial);
 
 					if (primitive->hasIndices) {
-					    std::cout << "dr" << std::endl;
 						vkCmdDrawIndexed(cbIndex <= -1 ? customStuff.commandBuffers[- cbIndex - 1]: commandBuffers[cbIndex], primitive->indexCount, 1, primitive->firstIndex, 0, 0);
-						std::cout << "dr2" << std::endl;
 					} else {
 						vkCmdDraw(cbIndex <= -1 ? customStuff.commandBuffers[- cbIndex - 1]: commandBuffers[cbIndex], primitive->vertexCount, 1, 0, 0);
 					}
@@ -424,7 +437,12 @@ public:
 
 	void recordCommandBuffers()
 	{
-	    std::cout << "Not recording command buffers" << std::endl;
+	    std::cout << "Not recording normal command buffers, only custom" << std::endl;
+
+	    for(size_t i = 0; i < commandBuffers.size(); i++) {
+		
+			recordCustomCommandBuffer(i);
+	    }
 	    return;
 		VkCommandBufferBeginInfo cmdBufferBeginInfo{};
 		cmdBufferBeginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
@@ -457,10 +475,8 @@ public:
 
 			VK_CHECK_RESULT(vkBeginCommandBuffer(currentCB, &cmdBufferBeginInfo));
 			
-		std::cout << "er1" << std::endl;
 			vkCmdBeginRenderPass(currentCB, &renderPassBeginInfo, VK_SUBPASS_CONTENTS_INLINE);
 			
-		std::cout << "er2" << std::endl;
 
 			VkViewport viewport{};
 			viewport.width = (float)width;
@@ -510,7 +526,6 @@ public:
 
 			vkCmdEndRenderPass(currentCB);
 			VK_CHECK_RESULT(vkEndCommandBuffer(currentCB));
-			recordCustomCommandBuffer(i);
 					
 		}
 
@@ -1211,9 +1226,7 @@ public:
 		renderPassBeginInfo.framebuffer = framebuffer;
 
 		VkCommandBuffer cmdBuf = vulkanDevice->createCommandBuffer(VK_COMMAND_BUFFER_LEVEL_PRIMARY, true);
-		std::cout << "br1" << std::endl;
 		vkCmdBeginRenderPass(cmdBuf, &renderPassBeginInfo, VK_SUBPASS_CONTENTS_INLINE);
-		std::cout << "br2" << std::endl;
 
 		VkViewport viewport{};
 		viewport.width = (float)dim;
@@ -1681,10 +1694,8 @@ public:
 
 					// Render scene from cube face's point of view
 					
-					std::cout << "cr1" << std::endl;
 					vkCmdBeginRenderPass(cmdBuf, &renderPassBeginInfo, VK_SUBPASS_CONTENTS_INLINE);
 					
-					std::cout << "cr2" << std::endl;
 
 					// Pass parameters for current pass using a push constant block
 					switch (target) {
@@ -2059,7 +2070,8 @@ public:
 	vkBeginCommandBuffer(customStuff.secondCommandBuffer, &cmd_begin);
 
 	cmdSetLayout(customStuff.secondCommandBuffer, customStuff.fbColor.image, VK_IMAGE_ASPECT_COLOR_BIT,
-		     VK_IMAGE_LAYOUT_PRESENT_SRC_KHR, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
+		     // VK_IMAGE_LAYOUT_PRESENT_SRC_KHR, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
+		     VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
 	cmdSetLayout(customStuff.secondCommandBuffer, customStuff.reachableImage.image, VK_IMAGE_ASPECT_COLOR_BIT,
 		     VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
 
@@ -2144,48 +2156,66 @@ public:
 	} while (res == VK_TIMEOUT);
 	
 	VK_CHECK_RESULT(vkResetFences(device, 1, &customStuff.fence));
-	
-	float* tmp;
-	
-	VK_CHECK_RESULT(vkMapMemory(device, customStuff.reachableImage.memory, 0, VK_WHOLE_SIZE, 0, (void**)&tmp));
 
-	tmp += srl.offset;
+	
+	using out_type = float;
+        out_type* tmp;
+	
+	VK_CHECK_RESULT(vkMapMemory(device, customStuff.reachableImage.memory, 0, srl.size, 0, (void**)&tmp));
 
-	// uint32_t data[SCREENSHOT_HEIGHT * SCREENSHOT_WIDTH];
-	float data[SCREENSHOT_HEIGHT * SCREENSHOT_WIDTH * 4];
+	out_type* first_tmp = tmp;
+	
+	tmp += srl.offset / sizeof(out_type);
+
+	// uint32_t* data = new uint32_t[SCREENSHOT_HEIGHT * SCREENSHOT_WIDTH];
+	std::cout << "Screenshot height: " << SCREENSHOT_HEIGHT << ", Screenshot width: " << SCREENSHOT_WIDTH << std::endl;
+        out_type* data = new out_type[SCREENSHOT_HEIGHT * SCREENSHOT_WIDTH * 4];
 	// Reverse byte order
 	// uint32_t* dataP = (uint32_t*)data;
-	float* dataP = data;
-	for(uint32_t i = 0; i < SCREENSHOT_HEIGHT; i++) {
-	    // uint32_t *tp = (uint32_t*)tmp;
-	    float *tp = (float*)tmp;
-	    for(uint32_t j = 0; j < SCREENSHOT_WIDTH; j++) {
-		/* uint32_t dd = *tp;
-		uint32_t ddd = (((dd & 255) << 16) | (dd & (255 << 8)) | ((dd >> 16) & 255)) | (255 << 24);
-		*dataP = ddd;
-		tp++;
-		dataP++; */
-	        for(int k = 0; k < 4; k++) {
-		    *(dataP++) = *(tp++);
+	if( srl.rowPitch == SCREENSHOT_WIDTH * sizeof(out_type) * 4) {
+	    memcpy(data, tmp, srl.size);
+	} else {
+	    float* dataP = data;
+	    for(uint32_t i = 0; i < SCREENSHOT_HEIGHT; i++) {
+		std::cout << "Beginning of loop, tmp is now " << tmp << ", i = " << i << std::endl;
+		// uint32_t *tp = (uint32_t*)tmp;
+		out_type *tp = (out_type*)tmp;
+		for(uint32_t j = 0; j < SCREENSHOT_WIDTH; j++) {
+		    /* uint32_t dd = *tp;
+		       uint32_t ddd = (((dd & 255) << 16) | (dd & (255 << 8)) | ((dd >> 16) & 255)) | (255 << 24);
+		       *dataP = ddd;
+		       tp++;
+		       dataP++; */
+		    for(int k = 0; k < 4; k++) {
+			*(dataP++) = *(tp++);
+		    }
 		}
+	    
+		tmp += srl.rowPitch / sizeof(out_type);
+	    
 	    }
-	    tmp += srl.rowPitch;
 	}
 
 	vkUnmapMemory(device, customStuff.reachableImage.memory);
+
+	uint8_t* out_data = new uint8_t[4 * SCREENSHOT_WIDTH * SCREENSHOT_HEIGHT];
 	
 	if(NORMALIZE_BUFFER) {
-	    normalize_image_buffer(data, SCREENSHOT_WIDTH, SCREENSHOT_HEIGHT);
+	    normalize_image_buffer(data, out_data, SCREENSHOT_WIDTH, SCREENSHOT_HEIGHT);
+	} else {
+	    convert_to_uint8(data, out_data, SCREENSHOT_WIDTH, SCREENSHOT_HEIGHT);
 	}
 	
 	std::ostringstream oss;
 	oss << "feature_frame" << std::setfill('0') << std::setw(5) << count << ".png";
 	std::string filename = oss.str();
 	
-	stbi_write_png(filename.c_str(), SCREENSHOT_WIDTH, SCREENSHOT_HEIGHT, 4, data, SCREENSHOT_WIDTH * 4);
+	stbi_write_png(filename.c_str(), SCREENSHOT_WIDTH, SCREENSHOT_HEIGHT, 4, out_data, SCREENSHOT_WIDTH * 4);
+	delete[] data;
 	
 	count++;
 	std::cout << "Image saved to " << filename << std::endl;
+	// exit(0);
     }
 
     void destroyCustomStuff() {
@@ -2655,9 +2685,9 @@ public:
 		    // std::cout << "Rendering with camera eye at " << glm::to_string(camera.position) << std::endl;
 		}
 		
-		updateOverlay();
+		/* updateOverlay();
 
-		/* VK_CHECK_RESULT(vkWaitForFences(device, 1, &waitFences[frameIndex], VK_TRUE, UINT64_MAX));
+	        VK_CHECK_RESULT(vkWaitForFences(device, 1, &waitFences[frameIndex], VK_TRUE, UINT64_MAX));
 		VK_CHECK_RESULT(vkResetFences(device, 1, &waitFences[frameIndex]));
 
 		VkResult acquire = swapChain.acquireNextImage(presentCompleteSemaphores[frameIndex], &currentBuffer);
@@ -2666,7 +2696,7 @@ public:
 		}
 		else {
 			VK_CHECK_RESULT(acquire);
-		}
+			} */
 
 		// Update UBOs
 		updateUniformBuffers();
@@ -2675,7 +2705,7 @@ public:
 		memcpy(currentUB.params.mapped, &shaderValuesParams, sizeof(shaderValuesParams));
 		memcpy(currentUB.skybox.mapped, &shaderValuesSkybox, sizeof(shaderValuesSkybox));
 
-		const VkPipelineStageFlags waitDstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+		/* const VkPipelineStageFlags waitDstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
 		VkSubmitInfo submitInfo{};
 		submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
 		submitInfo.pWaitDstStageMask = &waitDstStageMask;
