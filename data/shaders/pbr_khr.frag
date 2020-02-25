@@ -8,6 +8,7 @@ layout (location = 0) in vec3 inWorldPos;
 layout (location = 1) in vec3 inNormal;
 layout (location = 2) in vec2 inUV0;
 layout (location = 3) in vec2 inUV1;
+// layout (location = 4) in vec4 inNormPos;
 
 // Scene bindings
 
@@ -389,7 +390,10 @@ void main()
 		outColor = SRGBtoLINEAR(outColor);
 	}
 
-	outColor.rgb = n;
+	// outColor.rgb = n;
+	outColor.rgb = inWorldPos;
+	// outColor.rgb = inNormPos.xyz  / 2.0 + 0.5;
+	// outColor.b = 0.0;
 
 	// PBR equation debug visualization
 	// "none", "Diff (l,n)", "F (l,h)", "G (l,v,h)", "D (h)", "Specular"

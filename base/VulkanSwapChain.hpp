@@ -207,12 +207,13 @@ public:
 			bool found_B8G8R8A8_UNORM = false;
 			for (auto&& surfaceFormat : surfaceFormats)
 			{
-				// Prefer SRGB
-				if (surfaceFormat.format == VK_FORMAT_B8G8R8A8_SRGB)
+				// Prefer SRGB // No, prefer float format
+				if (surfaceFormat.format == VK_FORMAT_R32G32B32A32_SFLOAT)
 				{
 					colorFormat = surfaceFormat.format;
 					colorSpace = surfaceFormat.colorSpace;
 					found_B8G8R8A8_UNORM = true;
+					
 					break;
 				}
 				//if (surfaceFormat.format == VK_FORMAT_B8G8R8A8_UNORM)
@@ -230,7 +231,11 @@ public:
 			{
 				colorFormat = surfaceFormats[0].format;
 				colorSpace = surfaceFormats[0].colorSpace;
+				std::cout << "Could not find preferred format" << std::endl;
+			} else {
+			    std::cout << "Found preferred format" << std::endl;
 			}
+			
 		}
 
 	}

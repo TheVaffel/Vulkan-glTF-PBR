@@ -50,8 +50,11 @@ VkResult VulkanExampleBase::createInstance(bool enableValidation)
 
 	VkApplicationInfo appInfo = {};
 	appInfo.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
+	appInfo.pNext = NULL;
 	appInfo.pApplicationName = name.c_str();
+	appInfo.applicationVersion = 0x10001000;
 	appInfo.pEngineName = name.c_str();
+	appInfo.engineVersion = 0x10001000;
 	appInfo.apiVersion = VK_API_VERSION_1_0;
 
 	std::vector<const char*> instanceExtensions = { VK_KHR_SURFACE_EXTENSION_NAME };
@@ -72,7 +75,15 @@ VkResult VulkanExampleBase::createInstance(bool enableValidation)
 	VkInstanceCreateInfo instanceCreateInfo = {};
 	instanceCreateInfo.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
 	instanceCreateInfo.pNext = NULL;
+	instanceCreateInfo.flags = 0;
 	instanceCreateInfo.pApplicationInfo = &appInfo;
+
+	// These are set afterwards, but just for safety:
+	instanceCreateInfo.enabledLayerCount = 0;
+	instanceCreateInfo.ppEnabledLayerNames = NULL;
+	instanceCreateInfo.enabledExtensionCount = 0;
+	instanceCreateInfo.ppEnabledExtensionNames = NULL;
+	
 	if (instanceExtensions.size() > 0)
 	{
 	    if (settings.validation) {
@@ -126,8 +137,11 @@ VkResult VulkanExampleBase::createInstance(bool enableValidation)
 		instanceCreateInfo.ppEnabledLayerNames = validationLayerNames.data();
 	}
 
-	VkResult res;
-	VK_CHECK_RESULT(res = vkCreateInstance(&instanceCreateInfo, nullptr, &instance));
+	VkResult res = vkCreateInstance(&instanceCreateInfo, NULL, &instance);
+	// VK_CHECK_RESULT(res);
+	if(res != VK_SUCCESS) {
+	    std::cout << "Could not create instance... Welp, that's a problem" << std::endl;
+	}
 	std::cout << "Res = " << res << std::endl;
 	return res;
 	// return vkCreateInstance(&instanceCreateInfo, nullptr, &instance);

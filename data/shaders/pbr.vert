@@ -27,6 +27,7 @@ layout (location = 0) out vec3 outWorldPos;
 layout (location = 1) out vec3 outNormal;
 layout (location = 2) out vec2 outUV0;
 layout (location = 3) out vec2 outUV1;
+// layout (location = 4) out vec4 outNormPos;
 
 out gl_PerVertex
 {
@@ -52,7 +53,9 @@ void main()
 	}
 	locPos.y = -locPos.y;
 	outWorldPos = locPos.xyz / locPos.w;
+	vec4 projPos = ubo.projection * ubo.view * vec4(outWorldPos, 1.0);
 	outUV0 = inUV0;
 	outUV1 = inUV1;
-	gl_Position =  ubo.projection * ubo.view * vec4(outWorldPos, 1.0);
+	gl_Position =  projPos;
+	// outNormPos = projPos;
 }

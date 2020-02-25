@@ -17,6 +17,8 @@
 #define SCREENSHOT_WIDTH 1280
 #define SCREENSHOT_HEIGHT 720
 
+#define NORMALIZE_BUFFER true
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -33,6 +35,9 @@
 #endif
 
 #include <vulkan/vulkan.h>
+
+#define CUSTOM_FORMAT VK_FORMAT_R32G32B32A32_SFLOAT
+
 #include "VulkanExampleBase.h"
 #include "VulkanTexture.hpp"
 #include "VulkanglTFModel.hpp"
@@ -46,6 +51,35 @@
 #define GLM_FORCE_DEPTH_ZERO_TO_ONE
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
+
+
+/*
+  Util function(s)
+*/
+
+void normalize_image_buffer(float* data, int width, int height) {
+    float biggest[3] = {-1e6, -1e6, -1e6};
+    float smallest[3] = {1e6, 1e6, 1e6};
+    for(int i = 0; i < width * height; i++) {
+	for(int j = 0; j < 3; j++) {
+	    biggest[j] = std::max(biggest[j], data[4 * i + j]); // (unsigned char)((data[i] >> (8 * j)) & 255));
+	    smallest[j] = std::min(smallest[j], data[4 * i + j]);
+	}
+    }
+
+    for(int i = 0; i < 3; i++) {
+	std::cout << "Smallest: " << smallest[i] << "\nBiggest: " << biggest[i] << std::endl;
+    }
+    exit(0);
+
+    /* for(int i = 0; i < width * height; i++) {
+	int ll = 0;
+	for(int j = 0 ; j < 3; j++) {
+	    ll |= (((data[i] >> (8 * j)) & 255) * 255 / biggest[j]) << (8 * j);
+	}
+	data[i] = ll | (255 << 24);
+	} */
+}
 
 /*
 	PBR example main class
@@ -302,7 +336,9 @@ public:
 					vkCmdPushConstants(cbIndex <= -1 ? customStuff.commandBuffers[- cbIndex - 1]: commandBuffers[cbIndex], pipelineLayout, VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(PushConstBlockMaterial), &pushConstBlockMaterial);
 
 					if (primitive->hasIndices) {
+					    std::cout << "dr" << std::endl;
 						vkCmdDrawIndexed(cbIndex <= -1 ? customStuff.commandBuffers[- cbIndex - 1]: commandBuffers[cbIndex], primitive->indexCount, 1, primitive->firstIndex, 0, 0);
+						std::cout << "dr2" << std::endl;
 					} else {
 						vkCmdDraw(cbIndex <= -1 ? customStuff.commandBuffers[- cbIndex - 1]: commandBuffers[cbIndex], primitive->vertexCount, 1, 0, 0);
 					}
@@ -324,7 +360,7 @@ public:
 
 	VkRenderPassBeginInfo rpbi {};
 	rpbi.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
-	rpbi.renderPass = renderPass;
+	rpbi.renderPass = customStuff.renderPass;
 	rpbi.renderArea.offset.x = 0;
 	rpbi.renderArea.offset.y = 0;
 	rpbi.renderArea.extent.width = SCREENSHOT_WIDTH;
@@ -388,6 +424,8 @@ public:
 
 	void recordCommandBuffers()
 	{
+	    std::cout << "Not recording command buffers" << std::endl;
+	    return;
 		VkCommandBufferBeginInfo cmdBufferBeginInfo{};
 		cmdBufferBeginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
 
@@ -418,7 +456,11 @@ public:
 			VkCommandBuffer currentCB = commandBuffers[i];
 
 			VK_CHECK_RESULT(vkBeginCommandBuffer(currentCB, &cmdBufferBeginInfo));
+			
+		std::cout << "er1" << std::endl;
 			vkCmdBeginRenderPass(currentCB, &renderPassBeginInfo, VK_SUBPASS_CONTENTS_INLINE);
+			
+		std::cout << "er2" << std::endl;
 
 			VkViewport viewport{};
 			viewport.width = (float)width;
@@ -464,7 +506,7 @@ public:
 			}
 
 			// User interface
-			ui->draw(currentCB);
+			// ui->draw(currentCB);
 
 			vkCmdEndRenderPass(currentCB);
 			VK_CHECK_RESULT(vkEndCommandBuffer(currentCB));
@@ -889,7 +931,7 @@ public:
 		VkGraphicsPipelineCreateInfo pipelineCI{};
 		pipelineCI.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
 		pipelineCI.layout = pipelineLayout;
-		pipelineCI.renderPass = renderPass;
+		pipelineCI.renderPass = customStuff.renderPass;
 		pipelineCI.pInputAssemblyState = &inputAssemblyStateCI;
 		pipelineCI.pVertexInputState = &vertexInputStateCI;
 		pipelineCI.pRasterizationState = &rasterizationStateCI;
@@ -1169,7 +1211,9 @@ public:
 		renderPassBeginInfo.framebuffer = framebuffer;
 
 		VkCommandBuffer cmdBuf = vulkanDevice->createCommandBuffer(VK_COMMAND_BUFFER_LEVEL_PRIMARY, true);
+		std::cout << "br1" << std::endl;
 		vkCmdBeginRenderPass(cmdBuf, &renderPassBeginInfo, VK_SUBPASS_CONTENTS_INLINE);
+		std::cout << "br2" << std::endl;
 
 		VkViewport viewport{};
 		viewport.width = (float)dim;
@@ -1636,7 +1680,11 @@ public:
 					vkCmdSetScissor(cmdBuf, 0, 1, &scissor);
 
 					// Render scene from cube face's point of view
+					
+					std::cout << "cr1" << std::endl;
 					vkCmdBeginRenderPass(cmdBuf, &renderPassBeginInfo, VK_SUBPASS_CONTENTS_INLINE);
+					
+					std::cout << "cr2" << std::endl;
 
 					// Pass parameters for current pass using a push constant block
 					switch (target) {
@@ -1879,9 +1927,10 @@ public:
 		generateCubemaps();
 		prepareUniformBuffers();
 		setupDescriptors();
-		preparePipelines();
 		setupCustomStuff();
-
+		
+		preparePipelines();
+		
 		ui = new UI(vulkanDevice, renderPass, queue, pipelineCache, settings.sampleCount);
 		updateOverlay();
 
@@ -2096,35 +2145,45 @@ public:
 	
 	VK_CHECK_RESULT(vkResetFences(device, 1, &customStuff.fence));
 	
-	uint8_t* tmp;
+	float* tmp;
 	
 	VK_CHECK_RESULT(vkMapMemory(device, customStuff.reachableImage.memory, 0, VK_WHOLE_SIZE, 0, (void**)&tmp));
 
 	tmp += srl.offset;
 
-	uint32_t data[SCREENSHOT_HEIGHT * SCREENSHOT_WIDTH];
-
-	uint32_t* dataP = (uint32_t*)data;
+	// uint32_t data[SCREENSHOT_HEIGHT * SCREENSHOT_WIDTH];
+	float data[SCREENSHOT_HEIGHT * SCREENSHOT_WIDTH * 4];
+	// Reverse byte order
+	// uint32_t* dataP = (uint32_t*)data;
+	float* dataP = data;
 	for(uint32_t i = 0; i < SCREENSHOT_HEIGHT; i++) {
-	    uint32_t *tp = (uint32_t*)tmp;
+	    // uint32_t *tp = (uint32_t*)tmp;
+	    float *tp = (float*)tmp;
 	    for(uint32_t j = 0; j < SCREENSHOT_WIDTH; j++) {
-		uint32_t dd = *tp;
+		/* uint32_t dd = *tp;
 		uint32_t ddd = (((dd & 255) << 16) | (dd & (255 << 8)) | ((dd >> 16) & 255)) | (255 << 24);
 		*dataP = ddd;
 		tp++;
-		dataP++;
+		dataP++; */
+	        for(int k = 0; k < 4; k++) {
+		    *(dataP++) = *(tp++);
+		}
 	    }
 	    tmp += srl.rowPitch;
 	}
 
 	vkUnmapMemory(device, customStuff.reachableImage.memory);
-
+	
+	if(NORMALIZE_BUFFER) {
+	    normalize_image_buffer(data, SCREENSHOT_WIDTH, SCREENSHOT_HEIGHT);
+	}
+	
 	std::ostringstream oss;
 	oss << "feature_frame" << std::setfill('0') << std::setw(5) << count << ".png";
 	std::string filename = oss.str();
 	
 	stbi_write_png(filename.c_str(), SCREENSHOT_WIDTH, SCREENSHOT_HEIGHT, 4, data, SCREENSHOT_WIDTH * 4);
-
+	
 	count++;
 	std::cout << "Image saved to " << filename << std::endl;
     }
@@ -2153,7 +2212,7 @@ public:
 
 	// Create RenderPass
 	VkAttachmentDescription atts[2] = {};
-	atts[0].format = swapChain.colorFormat;
+	atts[0].format = CUSTOM_FORMAT; // swapChain.colorFormat;
 	atts[0].samples = VK_SAMPLE_COUNT_1_BIT;
 	atts[0].loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
 	atts[0].storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
@@ -2238,7 +2297,7 @@ public:
 	VkImageCreateInfo ici{};
 	ici.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
 	ici.imageType = VK_IMAGE_TYPE_2D;
-	ici.format = swapChain.colorFormat;
+	ici.format = CUSTOM_FORMAT; // swapChain.colorFormat;
 	ici.extent.width = SCREENSHOT_WIDTH;
 	ici.extent.height = SCREENSHOT_HEIGHT;
 	ici.extent.depth = 1;
@@ -2274,7 +2333,7 @@ public:
 	VkImageCreateInfo imageCI{};
 	imageCI.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
 	imageCI.imageType = VK_IMAGE_TYPE_2D;
-	imageCI.format = swapChain.colorFormat;
+	imageCI.format = CUSTOM_FORMAT; // swapChain.colorFormat;
 	imageCI.extent.width = SCREENSHOT_WIDTH;
 	imageCI.extent.height = SCREENSHOT_HEIGHT;
 	imageCI.extent.depth = 1;
@@ -2302,7 +2361,7 @@ public:
 	imageViewCI.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
 	imageViewCI.image = customStuff.fbColor.image;
 	imageViewCI.viewType = VK_IMAGE_VIEW_TYPE_2D;
-	imageViewCI.format = swapChain.colorFormat;
+	imageViewCI.format = CUSTOM_FORMAT; // swapChain.colorFormat;
 	imageViewCI.components.r = VK_COMPONENT_SWIZZLE_R;
 	imageViewCI.components.g = VK_COMPONENT_SWIZZLE_G;
 	imageViewCI.components.b = VK_COMPONENT_SWIZZLE_B;
@@ -2598,7 +2657,7 @@ public:
 		
 		updateOverlay();
 
-		VK_CHECK_RESULT(vkWaitForFences(device, 1, &waitFences[frameIndex], VK_TRUE, UINT64_MAX));
+		/* VK_CHECK_RESULT(vkWaitForFences(device, 1, &waitFences[frameIndex], VK_TRUE, UINT64_MAX));
 		VK_CHECK_RESULT(vkResetFences(device, 1, &waitFences[frameIndex]));
 
 		VkResult acquire = swapChain.acquireNextImage(presentCompleteSemaphores[frameIndex], &currentBuffer);
@@ -2629,11 +2688,12 @@ public:
 		VK_CHECK_RESULT(vkQueueSubmit(queue, 1, &submitInfo, waitFences[frameIndex]));
 		
 		VkResult present = swapChain.queuePresent(queue, currentBuffer, renderCompleteSemaphores[frameIndex]);
+		*/
 		
 		renderCustom(count);
 		count++;
 		
-		if (!((present == VK_SUCCESS) || (present == VK_SUBOPTIMAL_KHR))) {
+		/* if (!((present == VK_SUCCESS) || (present == VK_SUBOPTIMAL_KHR))) {
 			if (present == VK_ERROR_OUT_OF_DATE_KHR) {
 				windowResize();
 				return;
@@ -2664,7 +2724,7 @@ public:
 			if (rotateModel) {
 				updateUniformBuffers();
 			}
-		}
+			} */
 		if (camera.updated) {
 			updateUniformBuffers();
 		}
