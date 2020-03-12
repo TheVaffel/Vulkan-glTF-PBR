@@ -390,8 +390,8 @@ void main()
 		outColor = SRGBtoLINEAR(outColor);
 	}
 
-	// outColor.rgb = n;
-	outColor.rgb = inWorldPos;
+	outColor.rgb = n.xyz / 2.0 + 0.5;
+	// outColor.rgb = inWorldPos;
 	// outColor.rgb = inNormPos.xyz  / 2.0 + 0.5;
 	// outColor.b = 0.0;
 

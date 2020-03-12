@@ -17,7 +17,8 @@
 #define SCREENSHOT_WIDTH 1280
 #define SCREENSHOT_HEIGHT 720
 
-#define NORMALIZE_BUFFER true
+#define NORMALIZE_BUFFER false
+#define OUTPUT_IMAGE_PREFIX "normal_frame"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -384,9 +385,7 @@ public:
 
 	VkCommandBuffer cb = customStuff.commandBuffers[ccb];
 
-	std::cout << "Bouta begin command buffer" << std::endl;
 	VK_CHECK_RESULT(vkBeginCommandBuffer(cb, &cmdBufferBeginInfo));
-	std::cout << "Began command buffer" << std::endl;
 	vkCmdBeginRenderPass(cb, &rpbi, VK_SUBPASS_CONTENTS_INLINE);
 
 	VkViewport viewport{};
@@ -430,9 +429,7 @@ public:
 	}
 
 	vkCmdEndRenderPass(cb);
-	std::cout << "Ending command buffer" << std::endl;
 	VK_CHECK_RESULT(vkEndCommandBuffer(cb));
-	std::cout << "Ended command buffer" << std::endl;
     }
 
 	void recordCommandBuffers()
@@ -2207,7 +2204,7 @@ public:
 	}
 	
 	std::ostringstream oss;
-	oss << "feature_frame" << std::setfill('0') << std::setw(5) << count << ".png";
+	oss << OUTPUT_IMAGE_PREFIX << std::setfill('0') << std::setw(5) << count << ".png";
 	std::string filename = oss.str();
 	
 	stbi_write_png(filename.c_str(), SCREENSHOT_WIDTH, SCREENSHOT_HEIGHT, 4, out_data, SCREENSHOT_WIDTH * 4);
