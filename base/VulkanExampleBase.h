@@ -108,6 +108,14 @@ public:
 	bool paused = false;
 	uint32_t lastFPS = 0;
 
+	static const int num_available_features = 3;
+	const char* available_features[num_available_features + 1] = {
+	  "",
+	  "normal",
+	  "albedo",
+	  "position"
+	};
+	
 	struct Settings {
 		bool validation = false;
 		bool fullscreen = false;
@@ -117,6 +125,8 @@ public:
 	    bool followPath = false;
 	    std::vector<std::pair<glm::vec3, glm::vec3> > pathViews;
 	    std::string sceneFile;
+	  std::string feature_buffer;
+	  std::string output_prefix;
 	} settings;
 	
 	struct DepthStencil {

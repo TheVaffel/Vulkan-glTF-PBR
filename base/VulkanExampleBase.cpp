@@ -41,6 +41,16 @@ VKAPI_ATTR VkBool32 VKAPI_CALL debugMessageCallback(VkDebugReportFlagsEXT flags,
 	return VK_FALSE;
 }
 
+bool isFeatureBuffer(const std::string& name, int num_available_buffers, const char** available_buffers) {
+  for(int i = 0; i < num_available_buffers; i++) {
+    if(name == std::string(available_buffers[i])) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
 VkResult VulkanExampleBase::createInstance(bool enableValidation)
 {
 	this->settings.validation = enableValidation;
@@ -93,7 +103,7 @@ VkResult VulkanExampleBase::createInstance(bool enableValidation)
 		instanceCreateInfo.ppEnabledExtensionNames = instanceExtensions.data();
 	}
 
-	/* uint32_t layerCount;
+	uint32_t layerCount;
 	vkEnumerateInstanceLayerProperties(&layerCount, nullptr);
 		
 	std::vector<VkLayerProperties> availableLayers(layerCount);
@@ -102,7 +112,6 @@ VkResult VulkanExampleBase::createInstance(bool enableValidation)
 	for(auto& layer : availableLayers) {
 	    std::cout << "Layer available: " << layer.layerName << std::endl;
 	}
-	exit(0); */
 
 	uint32_t count;
 	vkEnumerateInstanceExtensionProperties(nullptr, &count, nullptr); //get number of extensions
@@ -115,8 +124,18 @@ VkResult VulkanExampleBase::createInstance(bool enableValidation)
 	std::vector<const char*> validationLayerNames;
 
 	if (settings.validation) {
-#if !defined(__ANDROID__)
 		validationLayerNames.push_back("VK_LAYER_LUNARG_standard_validation");
+		// validationLayerNames.push_back("VK_LAYER_KHRONOS_validation");
+		
+		// validationLayerNames.push_back("VK_LAYER_LUNARG_parameter_validation");
+		// validationLayerNames.push_back("VK_LAYER_LUNARG_object_tracker");
+		// validationLayerNames.push_back("VK_LAYER_LUNARG_core_validation");
+		// validationLayerNames.push_back("VK_LAYER_LUNARG_swapchain");
+		// validationLayerNames.push_back("VK_LAYER_GOOGLE_unique_objects");
+#if !defined(__ANDROID__)
+		// validationLayerNames.push_back("VK_LAYER_LUNARG_standard_validation");
+        
+		
 #else
 		// Use `VK_LAYER_KHRONOS_valiation` for NDK r21 or later 
 		// https://developer.android.com/ndk/guides/graphics/validation-layer
@@ -137,6 +156,16 @@ VkResult VulkanExampleBase::createInstance(bool enableValidation)
 		instanceCreateInfo.ppEnabledLayerNames = validationLayerNames.data();
 	}
 
+	std::cout << "Activating " << instanceCreateInfo.enabledLayerCount << " layers:" << std::endl;
+	for(size_t i = 0; i < instanceCreateInfo.enabledLayerCount; i++) {
+	  std::cout << "Activated " << instanceCreateInfo.ppEnabledLayerNames[i] << std::endl;
+	}
+
+	std::cout << "Activating " << instanceCreateInfo.enabledExtensionCount << " layers: " << std::endl;
+	for(size_t i = 0; i < instanceCreateInfo.enabledExtensionCount; i++) {
+	  std::cout << "Activated " << instanceCreateInfo.ppEnabledExtensionNames[i] << std::endl;
+	}
+	
 	VkResult res = vkCreateInstance(&instanceCreateInfo, NULL, &instance);
 	// VK_CHECK_RESULT(res);
 	if(res != VK_SUCCESS) {
@@ -187,7 +216,7 @@ void VulkanExampleBase::prepare()
 
 		// This is the frame buffer attachment to where the multisampled image
 		// will be resolved to and which will be presented to the swapchain
-		attachments[1].format = swapChain.colorFormat;
+		attachments[1].format =  swapChain.colorFormat;
 		attachments[1].samples = VK_SAMPLE_COUNT_1_BIT;
 		attachments[1].loadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
 		attachments[1].storeOp = VK_ATTACHMENT_STORE_OP_STORE;
@@ -556,14 +585,12 @@ VulkanExampleBase::VulkanExampleBase()
 	// Parse command line arguments
 	for (size_t i = 0; i < args.size(); i++)
 	{
-		if (args[i] == std::string("-validation")) {
+	  if (args[i] == std::string("-validation") || args[i] == std::string("--validation")) {
+		  std::cout << "Validation is on" << std::endl;
 			settings.validation = true;
 		}
 		if (args[i] == std::string("-vsync")) {
 			settings.vsync = true;
-		}
-		if ((args[i] == std::string("-f")) || (args[i] == std::string("--fullscreen"))) {
-			settings.fullscreen = true;
 		}
 		if ((args[i] == std::string("-w")) || (args[i] == std::string("--width"))) {
 			uint32_t w = strtol(args[i + 1], &numConvPtr, 10);
@@ -580,7 +607,19 @@ VulkanExampleBase::VulkanExampleBase()
 		    settings.pathViews = getPathDecomposed(pathFile);
 		}
 		if ((args[i] == std::string("-s")) || (args[i] == std::string("--scene"))) {
-		    settings.sceneFile = args[i + 1];
+		    settings.sceneFile = args[++i];
+		}
+		if((args[i] == std::string("-f")) || (args[i] == std::string("--feature"))) {
+		  settings.feature_buffer = args[++i];
+		  std::cout << "Feature set to \"" << settings.feature_buffer << "\"" << std::endl;
+		  if(!isFeatureBuffer(settings.feature_buffer, num_available_features, available_features)) {
+		    std::cerr << "Feature name " << settings.feature_buffer << " is not recognized, exiting" << std::endl;
+		    exit(-1);
+		  }
+		}
+
+		if((args[i] == std::string("-o")) || (args[i] == std::string("--output-prefix"))) {
+		  settings.output_prefix = args[++i];
 		}
 	}
 	
@@ -1642,22 +1681,6 @@ void VulkanExampleBase::handleEvent(const xcb_generic_event_t *event)
 
 void VulkanExampleBase::windowResized() {}
 
-void copyImage(VkImage src, VkImage dst) {
-    VkResult res;
-
-    VkCommandBufferBeginInfo cmd_begin = {};
-    cmd_begin.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-    cmd_begin.pNext = NULL;
-    cmd_begin.flags = 0;
-    cmd_begin.pInheritanceInfo = NULL;
-
-    //Ensure free command buffer is ready
-    /* do {
-	res = vkWaitForFences(device, 1, &free_command_buffer_fence, VK_TRUE, FENCE_TIMEOUT);
-	} while (res == VK_TIMEOUT); */
-
-    
-}
 
 void VulkanExampleBase::setupFrameBuffer()
 {

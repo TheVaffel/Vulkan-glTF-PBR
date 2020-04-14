@@ -89,7 +89,7 @@ if (CMAKE_CXX_COMPILER_ID MATCHES "Clang")
 endif()
 
 add_definitions(-D_CRT_SECURE_NO_WARNINGS)
-add_definitions(-std=c++11 -g)
+add_definitions(-std=c++11 -g -Wall)
 
 file(GLOB SOURCE *.cpp )
 
@@ -108,7 +108,7 @@ ENDIF(MSVC)
 IF(WIN32)
 	# Nothing here (yet)
 ELSE(WIN32)
-	link_libraries(${XCB_LIBRARIES} ${Vulkan_LIBRARY} ${Vulkan_LIBRARY} ${WAYLAND_CLIENT_LIBRARIES} ${CMAKE_THREAD_LIBS_INIT} json-c xcb-icccm)
+	link_libraries(${XCB_LIBRARIES} ${Vulkan_LIBRARY} ${Vulkan_LIBRARY} ${WAYLAND_CLIENT_LIBRARIES} ${CMAKE_THREAD_LIBS_INIT} json-c xcb-icccm OpenImageIO)
 ENDIF(WIN32)
 
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin/")

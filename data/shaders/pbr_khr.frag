@@ -25,6 +25,7 @@ layout (set = 0, binding = 1) uniform UBOParams {
 	float gamma;
 	float prefilteredCubeMipLevels;
 	float scaleIBLAmbient;
+	float featureBufferIndex;
 	float debugViewInputs;
 	float debugViewEquation;
 } uboParams;
@@ -390,17 +391,29 @@ void main()
 		outColor = SRGBtoLINEAR(outColor);
 	}
 
-	outColor.rgb = n.xyz / 2.0 + 0.5;
+	outColor.rgb = n.xyz;
 	// outColor.rgb = inWorldPos;
 	// outColor.rgb = inNormPos.xyz  / 2.0 + 0.5;
 	// outColor.b = 0.0;
+	// outColor.rgb = vec3(1.0, 0.0, 0.0);
 
 	// PBR equation debug visualization
 	// "none", "Diff (l,n)", "F (l,h)", "G (l,v,h)", "D (h)", "Specular"
 	if (uboParams.debugViewEquation > 0.0) {
 		int index = int(uboParams.debugViewEquation);
+
+		// For feature buffer outputs, we completely overload 
 		switch (index) {
-			case 1:
+		case 1:
+		  outColor.rgb = n.xyz; // Normal
+		  break;
+		case 2:
+		  // outColor.rgb = inWorldPos;
+		  outColor.rgba = material.baseColorTextureSet > -1 ? texture(colorMap, material.baseColorTextureSet == 0 ? inUV0 : inUV1) : vec4(1.0f);
+		  break;
+		case 3:
+		  outColor.rgb = inWorldPos;
+		/* case 1:
 				outColor.rgb = diffuseContrib;
 				break;
 			case 2:
@@ -414,7 +427,7 @@ void main()
 				break;
 			case 5:
 				outColor.rgb = specContrib;
-				break;				
+				break;*/
 		}
 	}
 

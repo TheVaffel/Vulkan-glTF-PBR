@@ -4,7 +4,7 @@
 #include <vector>
 
 #include <glm/glm.hpp>
-#define GLM_ENABLE_EXPERIMENTAL true
+#define GLM_ENABLE_EXPERIMENTAL
 #include <glm/ext.hpp>
 #include <glm/gtx/transform.hpp>
 
@@ -16,7 +16,7 @@ struct CameraCheckpoint {
     int t;
 };
 
-CameraCheckpoint cpFromObj(const json_object* obj) {
+/* CameraCheckpoint cpFromObj(json_object* obj) {
     CameraCheckpoint cc;
 
     json_object* tobj;
@@ -36,6 +36,35 @@ CameraCheckpoint cpFromObj(const json_object* obj) {
     cc.dir.z = float(json_object_get_double(tobj));
 
     tobj = json_object_object_get(obj, "t");
+    cc.t = json_object_get_int(tobj);
+
+    return cc;
+} */
+
+
+
+CameraCheckpoint cpFromObj(json_object* obj) {
+    CameraCheckpoint cc;
+
+    json_object* tobj;
+    
+    json_object_object_get_ex(obj, "x", &tobj);
+    cc.point.x = float(json_object_get_double(tobj));
+    json_object_object_get_ex(obj, "y", &tobj);
+    cc.point.y = float(json_object_get_double(tobj));
+    json_object_object_get_ex(obj, "z", &tobj);
+    cc.point.z = float(json_object_get_double(tobj));
+
+    json_object_object_get_ex(obj, "dirx", &tobj);
+    cc.dir.x = float(json_object_get_double(tobj));
+    json_object_object_get_ex(obj, "diry", &tobj);
+    cc.dir.y = float(json_object_get_double(tobj));
+    json_object_object_get_ex(obj, "dirz", &tobj);
+    cc.dir.z = float(json_object_get_double(tobj));
+
+    // tobj = json_object_object_get(obj, "t");
+    json_object_object_get_ex(obj, "t", &tobj);
+
     cc.t = json_object_get_int(tobj);
 
     return cc;
@@ -67,7 +96,7 @@ glm::mat4 getInterpolatedView(const CameraCheckpoint& cc1,
     return transform;
 }
 
-std::vector<CameraCheckpoint> getCameraCheckpointsFromObjects(const json_object* obj) {
+std::vector<CameraCheckpoint> getCameraCheckpointsFromObjects(json_object* obj) {
     std::vector<CameraCheckpoint> cps;
     
     array_list* arr = json_object_get_array(obj);
@@ -84,11 +113,11 @@ std::vector<CameraCheckpoint> getCameraCheckpointsFromObjects(const json_object*
     return cps;
 }
 
-std::vector<CameraCheckpoint> parse_to_cc(const std::string& str) {
-    std::ifstream fs(str);
+std::vector<CameraCheckpoint> parse_to_cc(const std::string& file_name) {
+    std::ifstream fs(file_name);
 
     if(!fs) {
-	std::cerr << "Could not open file " << str << std::endl;
+	std::cerr << "Could not open file " << file_name << std::endl;
 	exit(0);
     }
     
@@ -112,13 +141,13 @@ std::vector<CameraCheckpoint> parse_to_cc(const std::string& str) {
     return cps;
 }
 
-std::vector<glm::mat4> getPath(const std::string& str) {
+std::vector<glm::mat4> getPath(const std::string& file_name) {
     
-    std::vector<CameraCheckpoint> cps = parse_to_cc(str);
+    std::vector<CameraCheckpoint> cps = parse_to_cc(file_name);
 
     std::vector<glm::mat4> views;
     int t = cps[0].t;
-    int current_cp = 0;
+    size_t current_cp = 0;
     while(current_cp < cps.size() - 1) {
 
 	views.push_back(getInterpolatedView(cps[current_cp], cps[current_cp + 1], t));
@@ -144,13 +173,14 @@ std::pair<glm::vec3, glm::vec3> getInterpolatedComp(const CameraCheckpoint& cp1,
     return std::pair<glm::vec3, glm::vec3>(glm::vec3(pitch, yaw, 0.0f) * 180.0 / M_PI, cc.point);
 }
 
+// Decomposed as in returning path as  (rotation, position) pairs, where rotation is on Euler form
 std::vector<std::pair<glm::vec3, glm::vec3> > getPathDecomposed(const std::string& str) {
     std::vector<CameraCheckpoint> cps = parse_to_cc(str);
 
     std::vector<std::pair<glm::vec3, glm::vec3> > comps;
 
     int t = cps[0].t;
-    int current_cp = 0;
+    size_t current_cp = 0;
     while(current_cp < cps.size() - 1) {
 
         comps.push_back(getInterpolatedComp(cps[current_cp], cps[current_cp + 1], t));

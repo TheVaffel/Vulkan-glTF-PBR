@@ -670,7 +670,7 @@ namespace vkglTF
 				translation = glm::make_vec3(node.translation.data());
 				newNode->translation = translation;
 			}
-			glm::mat4 rotation = glm::mat4(1.0f);
+			newNode->rotation = glm::mat4(1.0f);
 			if (node.rotation.size() == 4) {
 				glm::quat q = glm::make_quat(node.rotation.data());
 				newNode->rotation = glm::mat4(q);
@@ -906,6 +906,9 @@ namespace vkglTF
 			case 33648:
 				return VK_SAMPLER_ADDRESS_MODE_MIRRORED_REPEAT;
 			}
+
+			std::cerr << "Failed getVkWrapMode" << std::endl;
+			exit(-1);
 		}
 
 		VkFilter getVkFilterMode(int32_t filterMode) 
@@ -924,6 +927,9 @@ namespace vkglTF
 			case 9987:
 				return VK_FILTER_LINEAR;
 			}
+
+			std::cerr << "Failed getVkFilterMode" << std::endl;
+			exit(-1);
 		}
 
 		void loadTextureSamplers(tinygltf::Model &gltfModel)

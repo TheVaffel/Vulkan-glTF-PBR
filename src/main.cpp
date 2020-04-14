@@ -17,8 +17,7 @@
 #define SCREENSHOT_WIDTH 1280
 #define SCREENSHOT_HEIGHT 720
 
-#define NORMALIZE_BUFFER false
-#define OUTPUT_IMAGE_PREFIX "normal_frame"
+// #define OUTPUT_IMAGE_PREFIX "normal_frame"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -38,6 +37,7 @@
 #include <vulkan/vulkan.h>
 
 #define CUSTOM_FORMAT VK_FORMAT_R32G32B32A32_SFLOAT
+// #define CUSTOM_FORMAT VK_FORMAT_R8G8B8A8_UNORM
 
 #include "VulkanExampleBase.h"
 #include "VulkanTexture.hpp"
@@ -48,11 +48,12 @@
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #include "stb_image_write.h"
 
+#include <OpenImageIO/imageio.h>
+
 #define GLM_FORCE_RADIANS
 #define GLM_FORCE_DEPTH_ZERO_TO_ONE
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
-
 
 /*
   Util function(s)
@@ -67,18 +68,18 @@ void convert_to_uint8(float* data, uint8_t* out, int width, int height) {
 
 // Normalize float values to the range [0, 255], separately for each channel
 void normalize_image_buffer(float* data, uint8_t* out, int width, int height) {
-    float biggest[3] = {-1e6, -1e6, -1e6};
-    float smallest[3] = {1e6, 1e6, 1e6};
+  float biggest[4] = {-1e6, -1e6, -1e6, -1e6};
+    float smallest[4] = {1e6, 1e6, 1e6, 1e6};
     for(int i = 0; i < width * height; i++) {
-	for(int j = 0; j < 3; j++) {
+	for(int j = 0; j < 4; j++) {
 	    biggest[j] = std::max(biggest[j], data[4 * i + j]); // (unsigned char)((data[i] >> (8 * j)) & 255));
 	    smallest[j] = std::min(smallest[j], data[4 * i + j]);
 	}
     }
 
-    float invdiffs[3];
+    float invdiffs[4];
     
-    for(int i = 0; i < 3; i++) {
+    for(int i = 0; i < 4; i++) {
 	std::cout << "Smallest: " << smallest[i] << "\nBiggest: " << biggest[i] << std::endl;
 	invdiffs[i] = 1.0f / (biggest[i] - smallest[i]);
     }
@@ -96,6 +97,40 @@ void normalize_image_buffer(float* data, uint8_t* out, int width, int height) {
 	out[4 * i + 3] = 255;
     }
 }
+
+// Convert from four channels to three
+void to3chan(float* data, int width, int height) {
+  for(int i = 0; i < width * height; i++) {
+    data[3 * i + 0] = data[4 * i + 0];
+    data[3 * i + 1] = data[4 * i + 1];
+    data[3 * i + 2] = data[4 * i + 2];
+  }
+}
+
+void output_image_float(float* data, int width, int height, int channels, const std::string& file_name) {
+
+  if(channels != 3) {
+    std::cerr << "Number of channels must be 3 for the time being (for input to BMFR)" << std::endl;
+    exit(-1);
+  }
+  /* for(int i = 0; i < width * height * 4; i++ ) {
+    data[i] = 3.0f;
+    } */
+  OpenImageIO::ImageOutput* out = OpenImageIO::ImageOutput::create(file_name);
+  if(!out) {
+    std::cerr << "Cannot open output path " << file_name << ", quitting" << std::endl;
+    exit(-1);
+  }
+  
+  OpenImageIO::ImageSpec spec(width, height, 3, OpenImageIO::TypeDesc::FLOAT);
+  out->open(file_name, spec);
+  out->write_image(OpenImageIO::TypeDesc::FLOAT, data);
+  out->close();
+}
+
+/* void output_image_uint8(float* data, int width, int height, const std::string& file_name) {
+  
+   } */
 
 /*
 	PBR example main class
@@ -439,7 +474,7 @@ public:
 	    for(size_t i = 0; i < commandBuffers.size(); i++) {
 		
 			recordCustomCommandBuffer(i);
-	    }
+	    } 
 	    return;
 		VkCommandBufferBeginInfo cmdBufferBeginInfo{};
 		cmdBufferBeginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
@@ -491,7 +526,7 @@ public:
 			if (displayBackground) {
 				vkCmdBindDescriptorSets(currentCB, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout, 0, 1, &descriptorSets[i].skybox, 0, nullptr);
 				vkCmdBindPipeline(currentCB, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelines.skybox);
-				models.skybox.draw(currentCB);
+				// models.skybox.draw(currentCB);
 			}
 
 			vkCmdBindPipeline(currentCB, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelines.pbr);
@@ -502,11 +537,11 @@ public:
 			if (model.indices.buffer != VK_NULL_HANDLE) {
 				vkCmdBindIndexBuffer(currentCB, model.indices.buffer, 0, VK_INDEX_TYPE_UINT32);
 			}
-
 			// Opaque primitives first
 			for (auto node : model.nodes) {
 				renderNode(node, i, vkglTF::Material::ALPHAMODE_OPAQUE);
 			}
+
 			// Alpha masked primitives
 			for (auto node : model.nodes) {
 				renderNode(node, i, vkglTF::Material::ALPHAMODE_MASK);
@@ -641,10 +676,14 @@ public:
 
 		std::vector<vkglTF::Model*> modellist = { &models.skybox, &models.scene };
 		for (auto &model : modellist) {
-			for (auto &material : model->materials) {
+		  /* for (auto &material : model->materials) {
+			  
 				imageSamplerCount += 5;
 				materialCount++;
-			}
+				} */
+			imageSamplerCount += 5 * model->materials.size();
+			materialCount += model->materials.size();
+			
 			for (auto node : model->linearNodes) {
 				if (node->mesh) {
 					meshCount++;
@@ -682,7 +721,7 @@ public:
 			descriptorSetLayoutCI.bindingCount = static_cast<uint32_t>(setLayoutBindings.size());
 			VK_CHECK_RESULT(vkCreateDescriptorSetLayout(device, &descriptorSetLayoutCI, nullptr, &descriptorSetLayouts.scene));
 
-			for (auto i = 0; i < descriptorSets.size(); i++) {
+			for (size_t i = 0; i < descriptorSets.size(); i++) {
 
 				VkDescriptorSetAllocateInfo descriptorSetAllocInfo{};
 				descriptorSetAllocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
@@ -817,7 +856,7 @@ public:
 		}
 
 		// Skybox (fixed set)
-		for (auto i = 0; i < uniformBuffers.size(); i++) {
+		for (size_t i = 0; i < uniformBuffers.size(); i++) {
 			VkDescriptorSetAllocateInfo descriptorSetAllocInfo{};
 			descriptorSetAllocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
 			descriptorSetAllocInfo.descriptorPool = descriptorPool;
@@ -943,6 +982,7 @@ public:
 		VkGraphicsPipelineCreateInfo pipelineCI{};
 		pipelineCI.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
 		pipelineCI.layout = pipelineLayout;
+		// pipelineCI.renderPass = renderPass; // customStuff.renderPass;
 		pipelineCI.renderPass = customStuff.renderPass;
 		pipelineCI.pInputAssemblyState = &inputAssemblyStateCI;
 		pipelineCI.pVertexInputState = &vertexInputStateCI;
@@ -1710,13 +1750,10 @@ public:
 					vkCmdBindPipeline(cmdBuf, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline);
 					vkCmdBindDescriptorSets(cmdBuf, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelinelayout, 0, 1, &descriptorset, 0, NULL);
 
-					VkDeviceSize offsets[1] = { 0 };
-
 					models.skybox.draw(cmdBuf);
 
 					vkCmdEndRenderPass(cmdBuf);
 
-					VkImageSubresourceRange subresourceRange = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 };
 					subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
 					subresourceRange.baseMipLevel = 0;
 					subresourceRange.levelCount = numMips;
@@ -1906,6 +1943,7 @@ public:
 		commandBuffers.resize(swapChain.imageCount);
 		uniformBuffers.resize(swapChain.imageCount);
 		descriptorSets.resize(swapChain.imageCount);
+		
 		// Command buffer execution fences
 		for (auto &waitFence : waitFences) {
 			VkFenceCreateInfo fenceCI{ VK_STRUCTURE_TYPE_FENCE_CREATE_INFO, nullptr, VK_FENCE_CREATE_SIGNALED_BIT };
@@ -1944,6 +1982,22 @@ public:
 
 		recordCommandBuffers();
 
+		if(settings.feature_buffer.length() == 0) {
+		  std::cout << "Feature buffer not specified, not using one" << std::endl;
+		} else {
+		  for(int i = 0; i < num_available_features; i++) {
+		    if(available_features[i] == settings.feature_buffer) {
+		      shaderValuesParams.debugViewEquation = i;
+		    }
+		  }
+		}
+
+		if(settings.output_prefix.length() == 0) {
+		  settings.output_prefix = "output";
+		  std::cout << "Output prefix not specified, \"" <<
+		    settings.output_prefix << "\"" << std::endl;
+		}
+		
 		prepared = true;
 	}
 
@@ -2031,32 +2085,54 @@ public:
 	    break;
 	}
 
+	// Test this for safety:
+	srcStages = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
+	destStages = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
 	vkCmdPipelineBarrier(cmd, srcStages, destStages, 0, 0, NULL, 0, NULL, 1, &image_memory_barrier);
     }
 
     void renderCustom(int count) {
-
+      
 	if(!settings.followPath) {
 	    return;
 	}
+
+	/* // See if we can aggrevate some vulkan debug layer output
+	VkBuffer bbb;
+	VkBufferCreateInfo bci;
+	bci.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO; // Should give fault
+	bci.size = 4;
+	bci.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
+	bci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+	if(vkCreateBuffer(device, &bci, nullptr, &bbb) != VK_SUCCESS) {
+	  std::cerr << "An error a day... " << std::endl;
+	  exit(-1);
+	  } */
+	// Conclusion: Yes we can
 	
 	// Set camera perspective aspect to conform to draw dimensions
-	camera.setPerspective(45.0, float(SCREENSHOT_WIDTH) / SCREENSHOT_HEIGHT, 0.001f, 256.0f);
-	updateUniformBuffers();
+	// camera.setPerspective(45.0, float(SCREENSHOT_WIDTH) / SCREENSHOT_HEIGHT, 0.001f, 256.0f);
+	// updateUniformBuffers();
 
 	// Submit already-recorded-command
-	const VkPipelineStageFlags waitDstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+	const VkPipelineStageFlags waitDstStageMask = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
 	VkSubmitInfo si {};
 	si.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
 	si.pWaitDstStageMask = &waitDstStageMask;
-	si.pWaitSemaphores = NULL;
+	// si.pWaitSemaphores = NULL;
 	si.waitSemaphoreCount = 0;
-	si.pSignalSemaphores = NULL;
-	si.signalSemaphoreCount = 0;
+	// si.pWaitSemaphores = &customStuff.copiedSemaphore;
+	// si.waitSemaphoreCount = 1;
+	// si.pSignalSemaphores = NULL;
+	// si.signalSemaphoreCount = 0;
+	si.pSignalSemaphores = &customStuff.renderedSemaphore;
+	si.signalSemaphoreCount = 1;
 	si.pCommandBuffers = &customStuff.commandBuffers[currentBuffer];
 	si.commandBufferCount = 1;
 
 	VK_CHECK_RESULT(vkQueueSubmit(queue, 1, &si, customStuff.fence));
+
+	usleep(100000);
 	
 	VkCommandBufferBeginInfo cmd_begin = {};
 	cmd_begin.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
@@ -2110,28 +2186,41 @@ public:
 
 
 	VkSubmitInfo submitInfo = {};
-
+	VkPipelineStageFlags waitDstStageMask2 = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
 	submitInfo.pNext = NULL;
 	submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-	submitInfo.waitSemaphoreCount = 0;
-	submitInfo.pWaitSemaphores = NULL;
-	submitInfo.pWaitDstStageMask = NULL;
+	// submitInfo.waitSemaphoreCount = 0;
+	// submitInfo.pWaitSemaphores = NULL;
+	// submitInfo.pWaitDstStageMask = NULL;
+	submitInfo.waitSemaphoreCount = 1;
+	submitInfo.pWaitSemaphores = &customStuff.renderedSemaphore;
+	submitInfo.pWaitDstStageMask = &waitDstStageMask2;
 	submitInfo.commandBufferCount = 1;
 	submitInfo.pCommandBuffers = &customStuff.secondCommandBuffer;
-	submitInfo.signalSemaphoreCount = 0;
-	submitInfo.pSignalSemaphores = NULL;
 
+	submitInfo.signalSemaphoreCount = 0;
+	// submitInfo.pSignalSemaphores = NULL;
+	// submitInfo.signalSemaphoreCount = 1;
+	// submitInfo.pSignalSemaphores = &customStuff.copiedSemaphore;
 	
 	// Wait until rendering is done
 
 	VkResult res;
 	do{
-	    res = vkWaitForFences(device, 1, &customStuff.fence, VK_TRUE, 10000);
+	    res = vkWaitForFences(device, 1, &customStuff.fence, VK_TRUE, 10000000);
 	} while (res == VK_TIMEOUT);
 	
 	VK_CHECK_RESULT(vkResetFences(device, 1, &customStuff.fence));
 
 	VK_CHECK_RESULT(vkQueueSubmit(queue, 1, &submitInfo, customStuff.fence));
+	
+	// Wait until image copy is done
+	
+	do{
+	    res = vkWaitForFences(device, 1, &customStuff.fence, VK_TRUE, 10000);
+	} while (res == VK_TIMEOUT);
+	
+	VK_CHECK_RESULT(vkResetFences(device, 1, &customStuff.fence));
 
 	VkImageSubresource subres{};
 	subres.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
@@ -2146,21 +2235,22 @@ public:
 	camera.setPerspective(45.0, (float)width / (float)height, 0.001f, 256.0f);
 	updateUniformBuffers();
 	
-	// Wait until image copy is done
-	
-	do{
-	    res = vkWaitForFences(device, 1, &customStuff.fence, VK_TRUE, 10000);
-	} while (res == VK_TIMEOUT);
-	
-	VK_CHECK_RESULT(vkResetFences(device, 1, &customStuff.fence));
 
 	
 	using out_type = float;
         out_type* tmp;
 	
 	VK_CHECK_RESULT(vkMapMemory(device, customStuff.reachableImage.memory, 0, srl.size, 0, (void**)&tmp));
+	usleep(100000);
+	/* float mmin = 1e8, mmax = -1e8;
+	for(int i = 0; i < SCREENSHOT_HEIGHT; i++) {
+	  for(int j = 0; j < SCREENSHOT_WIDTH * 4; j++) {
+	    mmin = std::min(mmin, tmp[i * srl.rowPitch / sizeof(out_type) + j]);
+	    mmax = std::max(mmax, tmp[i * srl.rowPitch / sizeof(out_type) + j]);
+	  }
+	}
+	std::cout << "Mmin = " << mmin << ", mmax = " << mmax << std::endl; */
 
-	out_type* first_tmp = tmp;
 	
 	tmp += srl.offset / sizeof(out_type);
 
@@ -2178,11 +2268,6 @@ public:
 		// uint32_t *tp = (uint32_t*)tmp;
 		out_type *tp = (out_type*)tmp;
 		for(uint32_t j = 0; j < SCREENSHOT_WIDTH; j++) {
-		    /* uint32_t dd = *tp;
-		       uint32_t ddd = (((dd & 255) << 16) | (dd & (255 << 8)) | ((dd >> 16) & 255)) | (255 << 24);
-		       *dataP = ddd;
-		       tp++;
-		       dataP++; */
 		    for(int k = 0; k < 4; k++) {
 			*(dataP++) = *(tp++);
 		    }
@@ -2195,21 +2280,27 @@ public:
 
 	vkUnmapMemory(device, customStuff.reachableImage.memory);
 
-	uint8_t* out_data = new uint8_t[4 * SCREENSHOT_WIDTH * SCREENSHOT_HEIGHT];
+	/* uint8_t* out_data = new uint8_t[4 * SCREENSHOT_WIDTH * SCREENSHOT_HEIGHT];
 	
 	if(NORMALIZE_BUFFER) {
 	    normalize_image_buffer(data, out_data, SCREENSHOT_WIDTH, SCREENSHOT_HEIGHT);
 	} else {
 	    convert_to_uint8(data, out_data, SCREENSHOT_WIDTH, SCREENSHOT_HEIGHT);
-	}
+	    } */
 	
 	std::ostringstream oss;
-	oss << OUTPUT_IMAGE_PREFIX << std::setfill('0') << std::setw(5) << count << ".png";
+	oss << settings.output_prefix  << std::setfill('0') << std::setw(3) << count << ".exr";
+	// oss << OUTPUT_IMAGE_PREFIX << std::setfill('0') << std::setw(5) << count << ".png";
 	std::string filename = oss.str();
+
+	// Destructively convert to 3-channel image
+	to3chan(data, SCREENSHOT_WIDTH, SCREENSHOT_HEIGHT);
+	output_image_float(data, SCREENSHOT_WIDTH, SCREENSHOT_HEIGHT, 3, filename);
 	
-	stbi_write_png(filename.c_str(), SCREENSHOT_WIDTH, SCREENSHOT_HEIGHT, 4, out_data, SCREENSHOT_WIDTH * 4);
 	delete[] data;
-	
+	// delete[] out_data;
+	// try this
+	usleep(100000);
 	count++;
 	std::cout << "Image saved to " << filename << std::endl;
 	// exit(0);
@@ -2242,7 +2333,7 @@ public:
 	atts[0].format = CUSTOM_FORMAT; // swapChain.colorFormat;
 	atts[0].samples = VK_SAMPLE_COUNT_1_BIT;
 	atts[0].loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
-	atts[0].storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+	atts[0].storeOp = VK_ATTACHMENT_STORE_OP_STORE;
 	atts[0].stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
 	atts[0].stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
 	atts[0].initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
@@ -2670,21 +2761,24 @@ public:
 			return;
 		}
 
+
+		// The BMFR counting starts from 1
+		static size_t count = 1;
 		
-		static int count = 0;
 		if(settings.followPath) {
-		    if(count >= settings.pathViews.size())
+		  if(count >= settings.pathViews.size()) {
+		    std::cout << "Done following path, exiting" << std::endl;
 			exit(0);
+		  }
 	    
 		    std::pair<glm::vec3, glm::vec3> decomp = settings.pathViews[count];
 		    camera.setRotation(decomp.first);
 		    camera.setPosition(decomp.second);
-		    // std::cout << "Rendering with camera eye at " << glm::to_string(camera.position) << std::endl;
 		}
 		
-		/* updateOverlay();
+		// updateOverlay();
 
-	        VK_CHECK_RESULT(vkWaitForFences(device, 1, &waitFences[frameIndex], VK_TRUE, UINT64_MAX));
+	        /* VK_CHECK_RESULT(vkWaitForFences(device, 1, &waitFences[frameIndex], VK_TRUE, UINT64_MAX));
 		VK_CHECK_RESULT(vkResetFences(device, 1, &waitFences[frameIndex]));
 
 		VkResult acquire = swapChain.acquireNextImage(presentCompleteSemaphores[frameIndex], &currentBuffer);
@@ -2693,7 +2787,7 @@ public:
 		}
 		else {
 			VK_CHECK_RESULT(acquire);
-			} */
+			}  */
 
 		// Update UBOs
 		updateUniformBuffers();
@@ -2714,8 +2808,7 @@ public:
 		submitInfo.commandBufferCount = 1;
 		VK_CHECK_RESULT(vkQueueSubmit(queue, 1, &submitInfo, waitFences[frameIndex]));
 		
-		VkResult present = swapChain.queuePresent(queue, currentBuffer, renderCompleteSemaphores[frameIndex]);
-		*/
+		VkResult present = swapChain.queuePresent(queue, currentBuffer, renderCompleteSemaphores[frameIndex]); */
 		
 		renderCustom(count);
 		count++;
@@ -2751,7 +2844,7 @@ public:
 			if (rotateModel) {
 				updateUniformBuffers();
 			}
-			} */
+			}  */
 		if (camera.updated) {
 			updateUniformBuffers();
 		}
@@ -2822,16 +2915,10 @@ int main(const int argc, const char *argv[])
 	return 0;
 }
 #elif defined(VK_USE_PLATFORM_XCB_KHR)
-static void handleEvent(const xcb_generic_event_t *event)
-{
-	if (vulkanExample != NULL)
-	{
-		vulkanExample->handleEvent(event);
-	}
-}
+
 int main(const int argc, const char *argv[])
 {
-	for (size_t i = 0; i < argc; i++) { VulkanExample::args.push_back(argv[i]); };
+	for (int i = 0; i < argc; i++) { VulkanExample::args.push_back(argv[i]); };
 	vulkanExample = new VulkanExample();
 	vulkanExample->initVulkan();
 	vulkanExample->setupWindow();
