@@ -17,7 +17,7 @@
 #define SCREENSHOT_WIDTH 1280
 #define SCREENSHOT_HEIGHT 720
 
-// #define OUTPUT_IMAGE_PREFIX "normal_frame"
+#define OUTPUT_INDEX_PAD 1
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -2270,7 +2270,7 @@ public:
 	vkUnmapMemory(device, customStuff.reachableImage.memory);
 	
 	std::ostringstream oss;
-	oss << settings.output_prefix  << std::setfill('0') << std::setw(3) << count << ".exr";
+	oss << settings.output_prefix  << std::setfill('0') << std::setw(OUTPUT_INDEX_PAD) << count << ".exr";
 	std::string filename = oss.str();
 
 	// Destructively convert to 3-channel image
