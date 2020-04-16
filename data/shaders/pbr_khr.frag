@@ -25,7 +25,6 @@ layout (set = 0, binding = 1) uniform UBOParams {
 	float gamma;
 	float prefilteredCubeMipLevels;
 	float scaleIBLAmbient;
-	float featureBufferIndex;
 	float debugViewInputs;
 	float debugViewEquation;
 } uboParams;
@@ -391,7 +390,7 @@ void main()
 		outColor = SRGBtoLINEAR(outColor);
 	}
 
-	outColor.rgb = n.xyz;
+	outColor.rgb = inWorldPos;
 	// outColor.rgb = inWorldPos;
 	// outColor.rgb = inNormPos.xyz  / 2.0 + 0.5;
 	// outColor.b = 0.0;
@@ -409,10 +408,14 @@ void main()
 		  break;
 		case 2:
 		  // outColor.rgb = inWorldPos;
-		  outColor.rgba = material.baseColorTextureSet > -1 ? texture(colorMap, material.baseColorTextureSet == 0 ? inUV0 : inUV1) : vec4(1.0f);
+		  outColor.rgba = material.baseColorTextureSet > -1 ? texture(colorMap, material.baseColorTextureSet == 0 ? inUV0 : inUV1) : vec4(1.0f);  outColor = SRGBtoLINEAR(outColor);
+		  // outColor.rgb = baseColor.rgb;
+		  // outColor.rgb = diffuseColor.rgb;
+		  // outColor.rgb = vec3(1.0, 0.0, 0.0);
 		  break;
 		case 3:
 		  outColor.rgb = inWorldPos;
+		  break;
 		/* case 1:
 				outColor.rgb = diffuseContrib;
 				break;

@@ -1988,6 +1988,8 @@ public:
 		  for(int i = 0; i < num_available_features; i++) {
 		    if(available_features[i] == settings.feature_buffer) {
 		      shaderValuesParams.debugViewEquation = i;
+		      std::cout << "Debug value set to " << i << std::endl;
+		      break;
 		    }
 		  }
 		}
@@ -2743,14 +2745,15 @@ public:
 	}
 
 	virtual void render()
-	{
+  {
 		if (!prepared) {
 			return;
 		}
 
 
 		// The BMFR counting starts from 1
-		static size_t count = 1;
+		const size_t count_offset = 1;
+		static size_t count = 0;
 		
 		if(settings.followPath) {
 		  if(count >= settings.pathViews.size()) {
@@ -2797,7 +2800,7 @@ public:
 		
 		VkResult present = swapChain.queuePresent(queue, currentBuffer, renderCompleteSemaphores[frameIndex]); */
 		
-		renderCustom(count);
+		renderCustom(count + count_offset);
 		count++;
 		
 		/* if (!((present == VK_SUCCESS) || (present == VK_SUBOPTIMAL_KHR))) {

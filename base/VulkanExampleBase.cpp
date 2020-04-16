@@ -42,7 +42,7 @@ VKAPI_ATTR VkBool32 VKAPI_CALL debugMessageCallback(VkDebugReportFlagsEXT flags,
 }
 
 bool isFeatureBuffer(const std::string& name, int num_available_buffers, const char** available_buffers) {
-  for(int i = 0; i < num_available_buffers; i++) {
+  for(int i = 0; i < num_available_buffers + 1; i++) {
     if(name == std::string(available_buffers[i])) {
       return true;
     }
