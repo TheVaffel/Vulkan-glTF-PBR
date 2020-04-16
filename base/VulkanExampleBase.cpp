@@ -103,6 +103,7 @@ VkResult VulkanExampleBase::createInstance(bool enableValidation)
 		instanceCreateInfo.ppEnabledExtensionNames = instanceExtensions.data();
 	}
 
+#if 0 // To see what layers are available
 	uint32_t layerCount;
 	vkEnumerateInstanceLayerProperties(&layerCount, nullptr);
 		
@@ -111,7 +112,7 @@ VkResult VulkanExampleBase::createInstance(bool enableValidation)
 	std::cout << "About to output hot layers: " << std::endl;
 	for(auto& layer : availableLayers) {
 	    std::cout << "Layer available: " << layer.layerName << std::endl;
-	}
+	    } */
 
 	uint32_t count;
 	vkEnumerateInstanceExtensionProperties(nullptr, &count, nullptr); //get number of extensions
@@ -120,6 +121,7 @@ VkResult VulkanExampleBase::createInstance(bool enableValidation)
 	for(auto& ext : extensions) {
 		std::cout << "Extension available: " << ext.extensionName << std::endl;
 	}
+#endif // 0/1, what layers are available
 
 	std::vector<const char*> validationLayerNames;
 
@@ -156,22 +158,23 @@ VkResult VulkanExampleBase::createInstance(bool enableValidation)
 		instanceCreateInfo.ppEnabledLayerNames = validationLayerNames.data();
 	}
 
+#if 0
 	std::cout << "Activating " << instanceCreateInfo.enabledLayerCount << " layers:" << std::endl;
 	for(size_t i = 0; i < instanceCreateInfo.enabledLayerCount; i++) {
 	  std::cout << "Activated " << instanceCreateInfo.ppEnabledLayerNames[i] << std::endl;
 	}
 
-	std::cout << "Activating " << instanceCreateInfo.enabledExtensionCount << " layers: " << std::endl;
+	std::cout << "Activating " << instanceCreateInfo.enabledExtensionCount << " extensions: " << std::endl;
 	for(size_t i = 0; i < instanceCreateInfo.enabledExtensionCount; i++) {
 	  std::cout << "Activated " << instanceCreateInfo.ppEnabledExtensionNames[i] << std::endl;
 	}
+#endif // 0/1
 	
 	VkResult res = vkCreateInstance(&instanceCreateInfo, NULL, &instance);
 	// VK_CHECK_RESULT(res);
 	if(res != VK_SUCCESS) {
 	    std::cout << "Could not create instance... Welp, that's a problem" << std::endl;
 	}
-	std::cout << "Res = " << res << std::endl;
 	return res;
 	// return vkCreateInstance(&instanceCreateInfo, nullptr, &instance);
 }

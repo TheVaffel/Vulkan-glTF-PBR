@@ -469,7 +469,7 @@ public:
 
 	void recordCommandBuffers()
 	{
-	    std::cout << "Not recording normal command buffers, only custom" << std::endl;
+	    std::cout << "Not recording normal command buffers, only offscreen ones" << std::endl;
 
 	    for(size_t i = 0; i < commandBuffers.size(); i++) {
 		
@@ -2241,31 +2241,18 @@ public:
         out_type* tmp;
 	
 	VK_CHECK_RESULT(vkMapMemory(device, customStuff.reachableImage.memory, 0, srl.size, 0, (void**)&tmp));
-	usleep(100000);
-	/* float mmin = 1e8, mmax = -1e8;
-	for(int i = 0; i < SCREENSHOT_HEIGHT; i++) {
-	  for(int j = 0; j < SCREENSHOT_WIDTH * 4; j++) {
-	    mmin = std::min(mmin, tmp[i * srl.rowPitch / sizeof(out_type) + j]);
-	    mmax = std::max(mmax, tmp[i * srl.rowPitch / sizeof(out_type) + j]);
-	  }
-	}
-	std::cout << "Mmin = " << mmin << ", mmax = " << mmax << std::endl; */
 
 	
 	tmp += srl.offset / sizeof(out_type);
 
-	// uint32_t* data = new uint32_t[SCREENSHOT_HEIGHT * SCREENSHOT_WIDTH];
-	std::cout << "Screenshot height: " << SCREENSHOT_HEIGHT << ", Screenshot width: " << SCREENSHOT_WIDTH << std::endl;
         out_type* data = new out_type[SCREENSHOT_HEIGHT * SCREENSHOT_WIDTH * 4];
 	// Reverse byte order
-	// uint32_t* dataP = (uint32_t*)data;
 	if( srl.rowPitch == SCREENSHOT_WIDTH * sizeof(out_type) * 4) {
 	    memcpy(data, tmp, srl.size);
 	} else {
 	    float* dataP = data;
 	    for(uint32_t i = 0; i < SCREENSHOT_HEIGHT; i++) {
-		std::cout << "Beginning of loop, tmp is now " << tmp << ", i = " << i << std::endl;
-		// uint32_t *tp = (uint32_t*)tmp;
+
 		out_type *tp = (out_type*)tmp;
 		for(uint32_t j = 0; j < SCREENSHOT_WIDTH; j++) {
 		    for(int k = 0; k < 4; k++) {

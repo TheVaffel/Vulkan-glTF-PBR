@@ -1340,10 +1340,6 @@ namespace vkglTF
 			aabb[3][1] = dimensions.min[1];
 			aabb[3][2] = dimensions.min[2];
 
-			std::cout << "aabb: " <<
-			    dimensions.min[0] << ", " << dimensions.max[0] << ", " <<
-			    dimensions.min[1] << ", " << dimensions.max[1] << ", " <<
-			    dimensions.min[2] << ", " << dimensions.max[2] << std::endl;
 		}
 
 		void updateAnimation(uint32_t index, float time) 

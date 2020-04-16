@@ -125,8 +125,6 @@ std::vector<CameraCheckpoint> parse_to_cc(const std::string& file_name) {
     buffer << fs.rdbuf();
     std::string ss = buffer.str();
 
-    std::cout << "String sent to parser: " << ss << std::endl;
-
     
     // json list = json::parse(ss); NB
     json_object* jo = json_tokener_parse(ss.c_str());

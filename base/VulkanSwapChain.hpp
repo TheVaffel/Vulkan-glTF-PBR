@@ -231,7 +231,7 @@ public:
 			{
 				colorFormat = surfaceFormats[0].format;
 				colorSpace = surfaceFormats[0].colorSpace;
-				std::cout << "Could not find preferred format" << std::endl;
+
 			} else {
 			    std::cout << "Found preferred format" << std::endl;
 			}
