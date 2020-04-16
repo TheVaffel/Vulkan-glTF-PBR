@@ -2268,18 +2268,9 @@ public:
 	}
 
 	vkUnmapMemory(device, customStuff.reachableImage.memory);
-
-	/* uint8_t* out_data = new uint8_t[4 * SCREENSHOT_WIDTH * SCREENSHOT_HEIGHT];
-	
-	if(NORMALIZE_BUFFER) {
-	    normalize_image_buffer(data, out_data, SCREENSHOT_WIDTH, SCREENSHOT_HEIGHT);
-	} else {
-	    convert_to_uint8(data, out_data, SCREENSHOT_WIDTH, SCREENSHOT_HEIGHT);
-	    } */
 	
 	std::ostringstream oss;
 	oss << settings.output_prefix  << std::setfill('0') << std::setw(3) << count << ".exr";
-	// oss << OUTPUT_IMAGE_PREFIX << std::setfill('0') << std::setw(5) << count << ".png";
 	std::string filename = oss.str();
 
 	// Destructively convert to 3-channel image
@@ -2287,12 +2278,9 @@ public:
 	output_image_float(data, SCREENSHOT_WIDTH, SCREENSHOT_HEIGHT, 3, filename);
 	
 	delete[] data;
-	// delete[] out_data;
-	// try this
-	usleep(100000);
+
 	count++;
 	std::cout << "Image saved to " << filename << std::endl;
-	// exit(0);
     }
 
     void destroyCustomStuff() {
