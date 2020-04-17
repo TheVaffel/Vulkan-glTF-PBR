@@ -127,6 +127,7 @@ public:
 	    std::string sceneFile;
 	  std::string feature_buffer;
 	  std::string output_prefix;
+	  int start_index = 0;
 	} settings;
 	
 	struct DepthStencil {

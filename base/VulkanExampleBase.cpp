@@ -620,9 +620,11 @@ VulkanExampleBase::VulkanExampleBase()
 		    exit(-1);
 		  }
 		}
-
 		if((args[i] == std::string("-o")) || (args[i] == std::string("--output-prefix"))) {
 		  settings.output_prefix = args[++i];
+		}
+		if((args[i] == std::string("--start")) || (args[i] == std::string("--start-index"))) {
+		  settings.start_index = std::stoi(args[++i]);
 		}
 	}
 	

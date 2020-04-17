@@ -2740,7 +2740,7 @@ public:
 
 
 		// The BMFR counting starts from 1
-		const size_t count_offset = 1;
+				
 		static size_t count = 0;
 		
 		if(settings.followPath) {
@@ -2788,7 +2788,7 @@ public:
 		
 		VkResult present = swapChain.queuePresent(queue, currentBuffer, renderCompleteSemaphores[frameIndex]); */
 		
-		renderCustom(count + count_offset);
+		renderCustom(count + settings.start_index);
 		count++;
 		
 		/* if (!((present == VK_SUCCESS) || (present == VK_SUBOPTIMAL_KHR))) {
