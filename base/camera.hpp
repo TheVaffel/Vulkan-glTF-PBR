@@ -43,7 +43,7 @@ private:
 		{
 			matrices.view = transM * rotM;
 		}
-		std::cout << "View matrix: \n" << glm::to_string(matrices.view) << std::endl;
+		// std::cout << "View matrix: \n" << glm::to_string(matrices.view) << std::endl;
 		updated = true;
 	};
 public:

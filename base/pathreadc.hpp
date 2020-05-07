@@ -36,7 +36,6 @@ CameraCheckpoint cpFromObj(json_object* obj) {
     json_object_object_get_ex(obj, "dirz", &tobj);
     cc.dir.z = float(json_object_get_double(tobj));
 
-    // tobj = json_object_object_get(obj, "t");
     json_object_object_get_ex(obj, "t", &tobj);
 
     cc.t = json_object_get_int(tobj);
@@ -156,8 +155,8 @@ std::vector<std::pair<glm::vec3, glm::vec3> > getPathDecomposed(const std::strin
     while(current_cp < cps.size() - 1) {
       
         comps.push_back(getInterpolatedComp(cps[current_cp], cps[current_cp + 1], t));
-	std::cout << "Rotation " << t << ": " << glm::to_string(comps[comps.size() - 1].first) << std::endl;
-	std::cout << "Position " << t << ": " << glm::to_string(comps[comps.size() - 1].second) << std::endl;
+	// std::cout << "Rotation " << t << ": " << glm::to_string(comps[comps.size() - 1].first) << std::endl;
+	// std::cout << "Position " << t << ": " << glm::to_string(comps[comps.size() - 1].second) << std::endl;
 	t++;
 	if (t >= cps[current_cp + 1].t) {
 	    current_cp++;
