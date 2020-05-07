@@ -1,5 +1,13 @@
 # Vulkan physically-Based Rendering using glTF 2.0 models
 
+__Note__: The original Vulkan-glTF-PBR is created by Sascha Willems. I have made a few modifications of the code:
+
+- Extended the command line interface
+- Added support for camera path following
+- Added output images, mainly focusing on EXR format
+- Add support for outputting multiple different features (feature buffers)
+
+
 <img src="./screenshots/damagedhelmet.jpg" width="644px"> <img src="./screenshots/polly.jpg" width="320px"> <img src="./screenshots/busterdrone.jpg" width="320px">
 
 [YouTube Vulkan glTF 2.0 playlist](https://www.youtube.com/watch?v=sl7iN-vQCOs&list=PLy80eMh1-zPUz7y1JtFiS9I6H7_trBUAf)
