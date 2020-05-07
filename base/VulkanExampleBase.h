@@ -108,7 +108,7 @@ public:
 	bool paused = false;
 	uint32_t lastFPS = 0;
 
-	static const int num_available_features = 3;
+	static const int num_available_features = 4;
 	const char* available_features[num_available_features + 1] = {
 	  "",
 	  "normal",
@@ -125,8 +125,8 @@ public:
 	    bool followPath = false;
 	    std::vector<std::pair<glm::vec3, glm::vec3> > pathViews;
 	    std::string sceneFile;
-	  std::string feature_buffer;
-	  std::string output_prefix;
+	  std::vector<std::string> feature_buffers;
+	  std::vector<std::string> output_prefixes;
 	  int start_index = 0;
 	} settings;
 	

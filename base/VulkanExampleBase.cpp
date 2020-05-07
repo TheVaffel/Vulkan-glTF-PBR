@@ -51,6 +51,16 @@ bool isFeatureBuffer(const std::string& name, int num_available_buffers, const c
   return false;
 }
 
+std::vector<std::string> tokenize(std::string str, char del) {
+  std::vector<std::string> tokens;
+  std::istringstream iss(str);
+  std::string s;
+  while(getline(iss, s, del)) {
+    tokens.push_back(s);
+  }
+  return tokens;
+}
+
 VkResult VulkanExampleBase::createInstance(bool enableValidation)
 {
 	this->settings.validation = enableValidation;
@@ -613,19 +623,31 @@ VulkanExampleBase::VulkanExampleBase()
 		    settings.sceneFile = args[++i];
 		}
 		if((args[i] == std::string("-f")) || (args[i] == std::string("--feature"))) {
-		  settings.feature_buffer = args[++i];
-		  std::cout << "Feature set to \"" << settings.feature_buffer << "\"" << std::endl;
-		  if(!isFeatureBuffer(settings.feature_buffer, num_available_features, available_features)) {
-		    std::cerr << "Feature name " << settings.feature_buffer << " is not recognized, exiting" << std::endl;
-		    exit(-1);
+		  std::string feature_buffer = args[++i];
+		  settings.feature_buffers = tokenize(feature_buffer, ',');
+		  for(std::string& buf : settings.feature_buffers) {
+		    std::cout << "Features include \"" << buf << "\"" << std::endl;
+		    if(!isFeatureBuffer(buf, num_available_features, available_features)) {
+		      std::cerr << "Feature name " << buf << " is not recognized, exiting" << std::endl;
+		      exit(-1);
+		    }
 		  }
 		}
 		if((args[i] == std::string("-o")) || (args[i] == std::string("--output-prefix"))) {
-		  settings.output_prefix = args[++i];
+		  std::string prefixes = args[++i];
+		  settings.output_prefixes = tokenize(prefixes, ',');
+		  for(std::string& pre : settings.output_prefixes) {
+		    std::cout << "Output prefixes include " << pre << std::endl;
+		  }
 		}
 		if((args[i] == std::string("--start")) || (args[i] == std::string("--start-index"))) {
 		  settings.start_index = std::stoi(args[++i]);
 		}
+	}
+
+	if(settings.feature_buffers.size() != settings.output_prefixes.size()) {
+	  std::cerr << "Number of feature buffers and output prefixes differ, quitting" << std::endl;
+	  exit(-1);
 	}
 	
 #if defined(VK_USE_PLATFORM_ANDROID_KHR)

@@ -16,32 +16,6 @@ struct CameraCheckpoint {
     int t;
 };
 
-/* CameraCheckpoint cpFromObj(json_object* obj) {
-    CameraCheckpoint cc;
-
-    json_object* tobj;
-    
-    tobj = json_object_object_get(obj, "x");
-    cc.point.x = float(json_object_get_double(tobj));
-    tobj = json_object_object_get(obj, "y");
-    cc.point.y = float(json_object_get_double(tobj));
-    tobj = json_object_object_get(obj, "z");
-    cc.point.z = float(json_object_get_double(tobj));
-
-    tobj = json_object_object_get(obj, "dirx");
-    cc.dir.x = float(json_object_get_double(tobj));
-    tobj = json_object_object_get(obj, "diry");
-    cc.dir.y = float(json_object_get_double(tobj));
-    tobj = json_object_object_get(obj, "dirz");
-    cc.dir.z = float(json_object_get_double(tobj));
-
-    tobj = json_object_object_get(obj, "t");
-    cc.t = json_object_get_int(tobj);
-
-    return cc;
-} */
-
-
 
 CameraCheckpoint cpFromObj(json_object* obj) {
     CameraCheckpoint cc;
@@ -165,7 +139,7 @@ std::pair<glm::vec3, glm::vec3> getInterpolatedComp(const CameraCheckpoint& cp1,
 						    int t) {
     CameraCheckpoint cc = getInterpolatedCheckpoint(cp1, cp2, t);
 
-    float yaw = std::atan2(cc.dir.x, cc.dir.z);
+    float yaw = std::atan2(cc.dir.x, -cc.dir.z);
     float pitch = std::atan2(cc.dir.y, sqrt(cc.dir.x * cc.dir.x + cc.dir.z * cc.dir.z));
 
     return std::pair<glm::vec3, glm::vec3>(glm::vec3(pitch, yaw, 0.0f) * 180.0 / M_PI, cc.point);
@@ -180,8 +154,10 @@ std::vector<std::pair<glm::vec3, glm::vec3> > getPathDecomposed(const std::strin
     int t = cps[0].t;
     size_t current_cp = 0;
     while(current_cp < cps.size() - 1) {
-
+      
         comps.push_back(getInterpolatedComp(cps[current_cp], cps[current_cp + 1], t));
+	std::cout << "Rotation " << t << ": " << glm::to_string(comps[comps.size() - 1].first) << std::endl;
+	std::cout << "Position " << t << ": " << glm::to_string(comps[comps.size() - 1].second) << std::endl;
 	t++;
 	if (t >= cps[current_cp + 1].t) {
 	    current_cp++;

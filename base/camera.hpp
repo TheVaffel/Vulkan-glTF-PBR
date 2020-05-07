@@ -23,7 +23,10 @@ private:
 
 	void updateViewMatrix()
 	{
-		glm::mat4 rotM = glm::mat4(1.0f);
+	  glm::mat4 rotM = glm::mat4(-1.0f, 0.0f, 0.0f, 0.0f,
+				     0.0f, 1.0f, 0.0f, 0.0f,
+				     0.0f, 0.0f, -1.0f, 0.0f,
+				     0.0f, 0.0f, 0.0f, 1.0f);
 		glm::mat4 transM;
 
 		rotM = glm::rotate(rotM, glm::radians(rotation.x), glm::vec3(1.0f, 0.0f, 0.0f));
@@ -34,13 +37,13 @@ private:
 
 		if (type == CameraType::firstperson)
 		{
-		    matrices.view = rotM * transM;
+		    matrices.view = rotM * transM ;
 		}
 		else
 		{
 			matrices.view = transM * rotM;
 		}
-
+		std::cout << "View matrix: \n" << glm::to_string(matrices.view) << std::endl;
 		updated = true;
 	};
 public:

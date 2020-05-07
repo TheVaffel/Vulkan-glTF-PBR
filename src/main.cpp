@@ -124,7 +124,9 @@ void output_image_float(float* data, int width, int height, int channels, const 
   
   OpenImageIO::ImageSpec spec(width, height, 3, OpenImageIO::TypeDesc::FLOAT);
   out->open(file_name, spec);
-  out->write_image(OpenImageIO::TypeDesc::FLOAT, data);
+  out->write_image(OpenImageIO::TypeDesc::FLOAT, data + 3 * width * (height - 1),
+		   OpenImageIO::AutoStride,
+		   - width * 3 * sizeof(float)); // Output image upside-down
   out->close();
 }
 
@@ -901,7 +903,7 @@ public:
 		rasterizationStateCI.sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
 		rasterizationStateCI.polygonMode = VK_POLYGON_MODE_FILL;
 		rasterizationStateCI.cullMode = VK_CULL_MODE_BACK_BIT;
-		rasterizationStateCI.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
+		rasterizationStateCI.frontFace = VK_FRONT_FACE_CLOCKWISE;
 		rasterizationStateCI.lineWidth = 1.0f;
 
 		VkPipelineColorBlendAttachmentState blendAttachmentState{};
@@ -1183,7 +1185,7 @@ public:
 		rasterizationStateCI.sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
 		rasterizationStateCI.polygonMode = VK_POLYGON_MODE_FILL;
 		rasterizationStateCI.cullMode = VK_CULL_MODE_NONE;
-		rasterizationStateCI.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
+		rasterizationStateCI.frontFace = VK_FRONT_FACE_CLOCKWISE;
 		rasterizationStateCI.lineWidth = 1.0f;
 
 		VkPipelineColorBlendAttachmentState blendAttachmentState{};
@@ -1584,7 +1586,7 @@ public:
 			rasterizationStateCI.sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
 			rasterizationStateCI.polygonMode = VK_POLYGON_MODE_FILL;
 			rasterizationStateCI.cullMode = VK_CULL_MODE_NONE;
-			rasterizationStateCI.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
+			rasterizationStateCI.frontFace = VK_FRONT_FACE_CLOCKWISE;
 			rasterizationStateCI.lineWidth = 1.0f;
 
 			VkPipelineColorBlendAttachmentState blendAttachmentState{};
@@ -1890,15 +1892,15 @@ public:
 		glm::vec3 translate = glm::vec3(0.0f);
 
 		shaderValuesScene.model = glm::mat4(1.0f);
-		shaderValuesScene.model[0][0] = - scale; // Mirror fix
+		shaderValuesScene.model[0][0] = scale; // Mirror fix
 		shaderValuesScene.model[1][1] = scale;
-		shaderValuesScene.model[2][2] = - scale; // Se if we can fix mirroring issue
+		shaderValuesScene.model[2][2] = scale; // Se if we can fix mirroring issue
 		shaderValuesScene.model = glm::translate(shaderValuesScene.model, translate);
 
 		shaderValuesScene.camPos = glm::vec3(
-			-camera.position.z * sin(glm::radians(camera.rotation.y)) * cos(glm::radians(camera.rotation.x)),
+			camera.position.z * sin(glm::radians(camera.rotation.y)) * cos(glm::radians(camera.rotation.x)),
 			-camera.position.z * sin(glm::radians(camera.rotation.x)),
-			 camera.position.z * cos(glm::radians(camera.rotation.y)) * cos(glm::radians(camera.rotation.x))
+			-camera.position.z * cos(glm::radians(camera.rotation.y)) * cos(glm::radians(camera.rotation.x))
 		);
 
 		// Skybox
@@ -1981,24 +1983,7 @@ public:
 		updateOverlay();
 
 		recordCommandBuffers();
-
-		if(settings.feature_buffer.length() == 0) {
-		  std::cout << "Feature buffer not specified, not using one" << std::endl;
-		} else {
-		  for(int i = 0; i < num_available_features; i++) {
-		    if(available_features[i] == settings.feature_buffer) {
-		      shaderValuesParams.debugViewEquation = i;
-		      std::cout << "Debug value set to " << i << std::endl;
-		      break;
-		    }
-		  }
-		}
-
-		if(settings.output_prefix.length() == 0) {
-		  settings.output_prefix = "output";
-		  std::cout << "Output prefix not specified, \"" <<
-		    settings.output_prefix << "\"" << std::endl;
-		}
+	        
 		
 		prepared = true;
 	}
@@ -2093,7 +2078,7 @@ public:
 	vkCmdPipelineBarrier(cmd, srcStages, destStages, 0, 0, NULL, 0, NULL, 1, &image_memory_barrier);
     }
 
-    void renderCustom(int count) {
+  void renderCustom(int count, int feature_index) {
       
 	if(!settings.followPath) {
 	    return;
@@ -2270,7 +2255,7 @@ public:
 	vkUnmapMemory(device, customStuff.reachableImage.memory);
 	
 	std::ostringstream oss;
-	oss << settings.output_prefix  << std::setfill('0') << std::setw(OUTPUT_INDEX_PAD) << count << ".exr";
+	oss << settings.output_prefixes[feature_index]  << std::setfill('0') << std::setw(OUTPUT_INDEX_PAD) << count << ".exr";
 	std::string filename = oss.str();
 
 	// Destructively convert to 3-channel image
@@ -2742,18 +2727,46 @@ public:
 		// The BMFR counting starts from 1
 				
 		static size_t count = 0;
+		static size_t feature_count = 0;
 		
 		if(settings.followPath) {
 		  if(count >= settings.pathViews.size()) {
-		    std::cout << "Done following path, exiting" << std::endl;
+		    if(settings.feature_buffers.size()) {
+		      std::cout << "Done with " << settings.feature_buffers[feature_count] << std::endl;
+		      count = 0;
+		      feature_count++;
+		      if(feature_count >= settings.feature_buffers.size()) {
+			std::cout << "Done following path, exiting" << std::endl;
 			exit(0);
+		      }
+		    } else {
+		      std::cout << "Done following path, exiting" << std::endl;
+		    }
+		      
 		  }
-	    
-		    std::pair<glm::vec3, glm::vec3> decomp = settings.pathViews[count];
-		    camera.setRotation(decomp.first);
-		    camera.setPosition(decomp.second);
+		  
+		  std::pair<glm::vec3, glm::vec3> decomp = settings.pathViews[count];
+		  camera.setRotation(decomp.first);
+		  camera.setPosition(decomp.second);
 		}
 		
+
+		if(count == 0 && settings.feature_buffers.size()) {
+		  bool ok = false;
+		  for(int i = 0; i < num_available_features; i++) {
+		    if(available_features[i] == settings.feature_buffers[feature_count]) {
+		      shaderValuesParams.debugViewEquation = i;
+		      std::cout << "Debug value set to " << i << std::endl;
+		      ok = true;
+		      break;
+		    }
+		  }
+		  if (!ok) {
+		    std::cout << "Debug value not set!" << std::endl;
+		    std::cout << "feature name: " << settings.feature_buffers[feature_count] << std::endl;
+		  }
+		}
+		  
 		// updateOverlay();
 
 	        /* VK_CHECK_RESULT(vkWaitForFences(device, 1, &waitFences[frameIndex], VK_TRUE, UINT64_MAX));
@@ -2788,7 +2801,7 @@ public:
 		
 		VkResult present = swapChain.queuePresent(queue, currentBuffer, renderCompleteSemaphores[frameIndex]); */
 		
-		renderCustom(count + settings.start_index);
+		renderCustom(count + settings.start_index, feature_count);
 		count++;
 		
 		/* if (!((present == VK_SUCCESS) || (present == VK_SUBOPTIMAL_KHR))) {

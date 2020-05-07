@@ -51,7 +51,6 @@ void main()
 		locPos = ubo.model * node.matrix * vec4(inPos, 1.0);
 		outNormal = normalize(transpose(inverse(mat3(ubo.model * node.matrix))) * inNormal);
 	}
-	locPos.y = -locPos.y;
 	outWorldPos = locPos.xyz / locPos.w;
 	vec4 projPos = ubo.projection * ubo.view * vec4(outWorldPos, 1.0);
 	outUV0 = inUV0;
