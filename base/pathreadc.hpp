@@ -139,7 +139,7 @@ std::pair<glm::vec3, glm::vec3> getInterpolatedComp(const CameraCheckpoint& cp1,
 						    int t) {
     CameraCheckpoint cc = getInterpolatedCheckpoint(cp1, cp2, t);
 
-    float yaw = std::atan2(cc.dir.x, -cc.dir.z);
+    float yaw = std::atan2(cc.dir.x, cc.dir.z);
     float pitch = std::atan2(cc.dir.y, sqrt(cc.dir.x * cc.dir.x + cc.dir.z * cc.dir.z));
 
     return std::pair<glm::vec3, glm::vec3>(glm::vec3(pitch, yaw, 0.0f) * 180.0 / M_PI, cc.point);
