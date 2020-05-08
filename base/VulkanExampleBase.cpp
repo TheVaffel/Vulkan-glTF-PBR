@@ -599,50 +599,50 @@ VulkanExampleBase::VulkanExampleBase()
 	for (size_t i = 0; i < args.size(); i++)
 	{
 	  if (args[i] == std::string("-validation") || args[i] == std::string("--validation")) {
-		  std::cout << "Validation is on" << std::endl;
-			settings.validation = true;
-		}
-		if (args[i] == std::string("-vsync")) {
-			settings.vsync = true;
-		}
-		if ((args[i] == std::string("-w")) || (args[i] == std::string("--width"))) {
-			uint32_t w = strtol(args[i + 1], &numConvPtr, 10);
-			if (numConvPtr != args[i + 1]) { width = w; };
-		}
-		if ((args[i] == std::string("-h")) || (args[i] == std::string("--height"))) {
-			uint32_t h = strtol(args[i + 1], &numConvPtr, 10);
-			if (numConvPtr != args[i + 1]) { height = h; };
-		}
-		if ((args[i] == std::string("-p")) || (args[i] == std::string("--path"))) {
-		    settings.followPath = true;
-		    std::string pathFile = args[i + 1];
-		    std::cout << "pathFile: " << pathFile << std::endl;
-		    settings.pathViews = getPathDecomposed(pathFile);
-		}
-		if ((args[i] == std::string("-s")) || (args[i] == std::string("--scene"))) {
-		    settings.sceneFile = args[++i];
-		}
-		if((args[i] == std::string("-f")) || (args[i] == std::string("--feature"))) {
-		  std::string feature_buffer = args[++i];
-		  settings.feature_buffers = tokenize(feature_buffer, ',');
-		  for(std::string& buf : settings.feature_buffers) {
-		    std::cout << "Features include \"" << buf << "\"" << std::endl;
-		    if(!isFeatureBuffer(buf, num_available_features, available_features)) {
-		      std::cerr << "Feature name " << buf << " is not recognized, exiting" << std::endl;
-		      exit(-1);
-		    }
-		  }
-		}
-		if((args[i] == std::string("-o")) || (args[i] == std::string("--output-prefix"))) {
-		  std::string prefixes = args[++i];
-		  settings.output_prefixes = tokenize(prefixes, ',');
-		  for(std::string& pre : settings.output_prefixes) {
-		    std::cout << "Output prefixes include " << pre << std::endl;
-		  }
-		}
-		if((args[i] == std::string("--start")) || (args[i] == std::string("--start-index"))) {
-		  settings.start_index = std::stoi(args[++i]);
-		}
+	    std::cout << "Validation is on" << std::endl;
+	    settings.validation = true;
+	  }
+	  if (args[i] == std::string("-vsync")) {
+	    settings.vsync = true;
+	  }
+	  if ((args[i] == std::string("-w")) || (args[i] == std::string("--width"))) {
+	    uint32_t w = strtol(args[i + 1], &numConvPtr, 10);
+	    if (numConvPtr != args[i + 1]) { this->width = w; };
+	  }
+	  if ((args[i] == std::string("-h")) || (args[i] == std::string("--height"))) {
+	    uint32_t h = strtol(args[i + 1], &numConvPtr, 10);
+	    if (numConvPtr != args[i + 1]) { this->height = h; };
+	  }
+	  if ((args[i] == std::string("-p")) || (args[i] == std::string("--path"))) {
+	    settings.followPath = true;
+	    std::string pathFile = args[i + 1];
+	    std::cout << "pathFile: " << pathFile << std::endl;
+	    settings.pathViews = getPathDecomposed(pathFile);
+	  }
+	  if ((args[i] == std::string("-s")) || (args[i] == std::string("--scene"))) {
+	    settings.sceneFile = args[++i];
+	  }
+	  if((args[i] == std::string("-f")) || (args[i] == std::string("--feature"))) {
+	    std::string feature_buffer = args[++i];
+	    settings.feature_buffers = tokenize(feature_buffer, ',');
+	    for(std::string& buf : settings.feature_buffers) {
+	      std::cout << "Features include \"" << buf << "\"" << std::endl;
+	      if(!isFeatureBuffer(buf, num_available_features, available_features)) {
+		std::cerr << "Feature name " << buf << " is not recognized, exiting" << std::endl;
+		exit(-1);
+	      }
+	    }
+	  }
+	  if((args[i] == std::string("-o")) || (args[i] == std::string("--output-prefix"))) {
+	    std::string prefixes = args[++i];
+	    settings.output_prefixes = tokenize(prefixes, ',');
+	    for(std::string& pre : settings.output_prefixes) {
+	      std::cout << "Output prefixes include " << pre << std::endl;
+	    }
+	  }
+	  if((args[i] == std::string("--start")) || (args[i] == std::string("--start-index"))) {
+	    settings.start_index = std::stoi(args[++i]);
+	  }
 	}
 
 	if(settings.feature_buffers.size() != settings.output_prefixes.size()) {
