@@ -14,9 +14,6 @@
  * - Add support for taking screenshots
  */
 
-#define SCREENSHOT_WIDTH 1280
-#define SCREENSHOT_HEIGHT 720
-
 #define OUTPUT_INDEX_PAD 1
 
 #include <stdio.h>
@@ -414,8 +411,8 @@ public:
 	rpbi.renderPass = customStuff.renderPass;
 	rpbi.renderArea.offset.x = 0;
 	rpbi.renderArea.offset.y = 0;
-	rpbi.renderArea.extent.width = SCREENSHOT_WIDTH;
-	rpbi.renderArea.extent.height = SCREENSHOT_HEIGHT;
+	rpbi.renderArea.extent.width = this->width;
+	rpbi.renderArea.extent.height = this->height;
 	rpbi.clearValueCount = 2;
 	rpbi.pClearValues = clearValues;
 	rpbi.framebuffer = customStuff.framebuffer;
@@ -426,14 +423,14 @@ public:
 	vkCmdBeginRenderPass(cb, &rpbi, VK_SUBPASS_CONTENTS_INLINE);
 
 	VkViewport viewport{};
-	viewport.width = (float)SCREENSHOT_WIDTH;
-	viewport.height = (float)SCREENSHOT_HEIGHT;
+	viewport.width = (float)this->width;
+	viewport.height = (float)this->height;
 	viewport.minDepth = 0.0f;
 	viewport.maxDepth = 1.0f;
 	vkCmdSetViewport(cb, 0, 1, &viewport);
 
 	VkRect2D scissor{};
-	scissor.extent = { SCREENSHOT_WIDTH, SCREENSHOT_HEIGHT };
+	scissor.extent = { this->width, this->height };
 	vkCmdSetScissor(cb, 0, 1, &scissor);
 
 	VkDeviceSize offsets[1] = { 0 };
@@ -2098,7 +2095,7 @@ public:
 	// Conclusion: Yes we can
 	
 	// Set camera perspective aspect to conform to draw dimensions
-	// camera.setPerspective(45.0, float(SCREENSHOT_WIDTH) / SCREENSHOT_HEIGHT, 0.001f, 256.0f);
+	// camera.setPerspective(45.0, float(this->width) / this->height, 0.001f, 256.0f);
 	// updateUniformBuffers();
 
 	// Submit already-recorded-command
@@ -2144,8 +2141,8 @@ public:
 	ic.srcOffset.x = 0;
 	ic.srcOffset.y = 0;
 	ic.srcOffset.z = 0;
-	ic.extent.width = SCREENSHOT_WIDTH;
-	ic.extent.height = SCREENSHOT_HEIGHT;
+	ic.extent.width = this->width;
+	ic.extent.height = this->height;
 	ic.extent.depth = 1;
 	
 	ic.dstSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
@@ -2155,8 +2152,8 @@ public:
 	ic.dstOffset.x = 0;
 	ic.dstOffset.y = 0;
 	ic.dstOffset.z = 0;
-	ic.extent.width = SCREENSHOT_WIDTH;
-	ic.extent.height = SCREENSHOT_HEIGHT;
+	ic.extent.width = this->width;
+	ic.extent.height = this->height;
 	ic.extent.depth = 1;
 
 	vkCmdCopyImage(customStuff.secondCommandBuffer, customStuff.fbColor.image,
@@ -2232,16 +2229,16 @@ public:
 	
 	tmp += srl.offset / sizeof(out_type);
 
-        out_type* data = new out_type[SCREENSHOT_HEIGHT * SCREENSHOT_WIDTH * 4];
+        out_type* data = new out_type[this->height * this->width * 4];
 	// Reverse byte order
-	if( srl.rowPitch == SCREENSHOT_WIDTH * sizeof(out_type) * 4) {
+	if( srl.rowPitch == this->width * sizeof(out_type) * 4) {
 	    memcpy(data, tmp, srl.size);
 	} else {
 	    float* dataP = data;
-	    for(uint32_t i = 0; i < SCREENSHOT_HEIGHT; i++) {
+	    for(uint32_t i = 0; i < this->height; i++) {
 
 		out_type *tp = (out_type*)tmp;
-		for(uint32_t j = 0; j < SCREENSHOT_WIDTH; j++) {
+		for(uint32_t j = 0; j < this->width; j++) {
 		    for(int k = 0; k < 4; k++) {
 			*(dataP++) = *(tp++);
 		    }
@@ -2259,8 +2256,8 @@ public:
 	std::string filename = oss.str();
 
 	// Destructively convert to 3-channel image
-	to3chan(data, SCREENSHOT_WIDTH, SCREENSHOT_HEIGHT);
-	output_image_float(data, SCREENSHOT_WIDTH, SCREENSHOT_HEIGHT, 3, filename);
+	to3chan(data, this->width, this->height);
+	output_image_float(data, this->width, this->height, 3, filename);
 	
 	delete[] data;
 
@@ -2290,6 +2287,8 @@ public:
     // Function for setting up screenshot-related stuff
     void setupCustomStuff() {
 
+      std::cout << "Starting custom setup" << std::endl;
+      
 	// Create RenderPass
 	VkAttachmentDescription atts[2] = {};
 	atts[0].format = CUSTOM_FORMAT; // swapChain.colorFormat;
@@ -2378,8 +2377,8 @@ public:
 	ici.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
 	ici.imageType = VK_IMAGE_TYPE_2D;
 	ici.format = CUSTOM_FORMAT; // swapChain.colorFormat;
-	ici.extent.width = SCREENSHOT_WIDTH;
-	ici.extent.height = SCREENSHOT_HEIGHT;
+	ici.extent.width = this->width;
+	ici.extent.height = this->height;
 	ici.extent.depth = 1;
 	ici.mipLevels = 1;
 	ici.arrayLayers = 1;
@@ -2414,8 +2413,8 @@ public:
 	imageCI.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
 	imageCI.imageType = VK_IMAGE_TYPE_2D;
 	imageCI.format = CUSTOM_FORMAT; // swapChain.colorFormat;
-	imageCI.extent.width = SCREENSHOT_WIDTH;
-	imageCI.extent.height = SCREENSHOT_HEIGHT;
+	imageCI.extent.width = this->width;
+	imageCI.extent.height = this->height;
 	imageCI.extent.depth = 1;
 	imageCI.mipLevels = 1;
 	imageCI.arrayLayers = 1;
@@ -2454,8 +2453,8 @@ public:
 	// Depth target
 	imageCI.imageType = VK_IMAGE_TYPE_2D;
 	imageCI.format = depthFormat;
-	imageCI.extent.width = width;
-	imageCI.extent.height = height;
+	imageCI.extent.width = this->width;
+	imageCI.extent.height = this->height;
 	imageCI.extent.depth = 1;
 	imageCI.mipLevels = 1;
 	imageCI.arrayLayers = 1;
@@ -2501,8 +2500,8 @@ public:
 	fbci.renderPass = customStuff.renderPass;
 	fbci.attachmentCount = 2;
 	fbci.pAttachments = attachments;
-	fbci.width = SCREENSHOT_WIDTH;
-	fbci.height = SCREENSHOT_HEIGHT;
+	fbci.width = this->width;
+	fbci.height = this->height;
 	fbci.layers = 1;
 
 	VK_CHECK_RESULT(vkCreateFramebuffer(device, &fbci, nullptr, &customStuff.framebuffer));
