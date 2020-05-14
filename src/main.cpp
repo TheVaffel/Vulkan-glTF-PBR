@@ -113,16 +113,17 @@ void output_image_float(float* data, int width, int height, int channels, const 
   /* for(int i = 0; i < width * height * 4; i++ ) {
     data[i] = 3.0f;
     } */
-  OpenImageIO::ImageOutput* out = OpenImageIO::ImageOutput::create(file_name);
+  std::unique_ptr<OIIO::ImageOutput> out = OIIO::ImageOutput::create(file_name);
+
   if(!out) {
     std::cerr << "Cannot open output path " << file_name << ", quitting" << std::endl;
     exit(-1);
   }
   
-  OpenImageIO::ImageSpec spec(width, height, 3, OpenImageIO::TypeDesc::FLOAT);
+  OIIO::ImageSpec spec(width, height, 3, OIIO::TypeDesc::FLOAT);
   out->open(file_name, spec);
-  out->write_image(OpenImageIO::TypeDesc::FLOAT, data + 3 * width * (height - 1),
-		   OpenImageIO::AutoStride,
+  out->write_image(OIIO::TypeDesc::FLOAT, data + 3 * width * (height - 1),
+		   OIIO::AutoStride,
 		   - width * 3 * sizeof(float)); // Output image upside-down
   out->close();
 }
