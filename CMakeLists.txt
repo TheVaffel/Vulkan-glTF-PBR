@@ -4,12 +4,18 @@ set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_SOURCE_DIR}/cmake")
 
 set(NAME Vulkan-glTF-PBR)
 
+option(WITH_DISPLAY "WITH_DISPLAY" OFF)
+
 project(${NAME})
 
 include_directories(external)
 include_directories(external/glm)
 include_directories(external/gli)
-include_directories(external/imgui)
+
+if(WITH_DISPLAY)
+  include_directories(external/imgui)
+endif()
+
 include_directories(external/tinygltf)
 include_directories(base)
 include_directories(~/pseudoroot/include)
@@ -90,6 +96,13 @@ endif()
 
 add_definitions(-D_CRT_SECURE_NO_WARNINGS)
 add_definitions(-std=c++11 -g -Wall)
+
+if(WTIH_DISPLAY)
+  message("Compiling with display")
+  add_definitions(-DWITH_DISPLAY)
+else()
+  message("Compiling without display")
+endif()
 
 file(GLOB SOURCE *.cpp )
 

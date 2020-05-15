@@ -9,7 +9,10 @@
 #include "VulkanExampleBase.h"
 
 #include "pathreadc.hpp"
+
+#ifdef WITH_DISPLAY
 #include <xcb/xcb_icccm.h>
+#endif // WITH_DISPLAY
 
 #include <chrono>
 #include <thread>
@@ -188,11 +191,42 @@ VkResult VulkanExampleBase::createInstance(bool enableValidation)
 	return res;
 	// return vkCreateInstance(&instanceCreateInfo, nullptr, &instance);
 }
+
+int VulkanExampleBase::getGraphicsQueueFamilyIndex() {
+  uint32_t queueCount;
+  vkGetPhysicalDeviceQueueFamilyProperties(physicalDevice, &queueCount, NULL);
+  assert(queueCount >= 1);
+
+  std::vector<VkQueueFamilyProperties> queueProps(queueCount);
+  vkGetPhysicalDeviceQueueFamilyProperties(physicalDevice, &queueCount, queueProps.data());
+
+  uint32_t graphicsQueueNodeIndex = UINT32_MAX;
+  for (uint32_t i = 0; i < queueCount; i++) 
+    {
+      if ((queueProps[i].queueFlags & VK_QUEUE_GRAPHICS_BIT) != 0) 
+	{
+	  graphicsQueueNodeIndex = i;
+	  break;
+	}
+    }
+
+  
+  // Exit if either a graphics or a presenting queue hasn't been found
+  if (graphicsQueueNodeIndex == UINT32_MAX) {
+    std::cerr << "Could not find a graphics queue!" << std::endl;
+    exit(-1);
+  }
+
+  return graphicsQueueNodeIndex;
+}
+
 void VulkanExampleBase::prepare()
 {
 	/*
 		Swapchain
 	*/
+
+#ifdef WITH_DISPLAY
 	initSwapchain();
 	setupSwapChain();
 
@@ -200,16 +234,24 @@ void VulkanExampleBase::prepare()
 	width = swapChain.extent.width;
 	height = swapChain.extent.height;
 #endif
+	
+#endif // WITH_DISPLAY
 
 	/*
 		Command pool
 	*/
 	VkCommandPoolCreateInfo cmdPoolInfo = {};
 	cmdPoolInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
+#ifdef WITH_DISPLAY
 	cmdPoolInfo.queueFamilyIndex = swapChain.queueNodeIndex;
+#else
+	cmdPoolInfo.queueFamilyIndex = this->getGraphicsQueueFamilyIndex();
+#endif
 	cmdPoolInfo.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
 	VK_CHECK_RESULT(vkCreateCommandPool(device, &cmdPoolInfo, nullptr, &cmdPool));
 
+
+#ifdef WITH_DISPLAY	
 	/*
 		Render pass
 	*/
@@ -388,6 +430,7 @@ void VulkanExampleBase::prepare()
 		Frame buffer
 	*/
 	setupFrameBuffer();
+#endif // WITH_DISPLAY
 }
 
 void VulkanExampleBase::renderFrame()
@@ -554,20 +597,27 @@ void VulkanExampleBase::renderLoop()
 		}
 	}
 #elif defined(VK_USE_PLATFORM_XCB_KHR)
+
+#ifdef WITH_DISPLAY
 	xcb_flush(connection);
+	xcb_generic_event_t *event;
+#endif // WITH_DISPLAY
+
+	
 	while (!quit)
 	{
 		auto tStart = std::chrono::high_resolution_clock::now();
 		
 		// Let the GPU cut some slack
 		std::this_thread::sleep_for(std::chrono::milliseconds(20));
-		
-		xcb_generic_event_t *event;
+
+#ifdef WITH_DISPLAY
 		while ((event = xcb_poll_for_event(connection)))
-		{
-			handleEvent(event);
-			free(event);
+		  handleEvent(event);	
+		  free(event);
 		}
+#endif // WITH_DISPLAY
+
 		// Camera is updated in event loop above here,
 		// set camera to path here for profit
 		render();
@@ -577,6 +627,7 @@ void VulkanExampleBase::renderLoop()
 		frameTimer = tDiff / 1000.0f;
 		camera.update(frameTimer);
 		fpsTimer += (float)tDiff;
+#ifdef WITH_DISPLAY
 		if (fpsTimer > 1000.0f)
 		{
 		    xcb_change_property(connection, XCB_PROP_MODE_REPLACE,
@@ -586,6 +637,7 @@ void VulkanExampleBase::renderLoop()
 			fpsTimer = 0.0f;
 			frameCounter = 0;
 		}
+#endif // WITH_DISPLAY
 	}
 #endif
 	// Flush device to make sure all resources can be freed 
@@ -649,7 +701,8 @@ VulkanExampleBase::VulkanExampleBase()
 	  std::cerr << "Number of feature buffers and output prefixes differ, quitting" << std::endl;
 	  exit(-1);
 	}
-	
+
+#if WITH_DISPLAY
 #if defined(VK_USE_PLATFORM_ANDROID_KHR)
 	// Vulkan library is loaded dynamically on Android
 	bool libLoaded = vks::android::loadVulkanLibrary();
@@ -661,6 +714,8 @@ VulkanExampleBase::VulkanExampleBase()
 #elif defined(VK_USE_PLATFORM_XCB_KHR)
 	initxcbConnection();
 #endif
+	
+#endif // WITH_DISPLAY
 
 #if defined(_WIN32)
 	AllocConsole();
@@ -675,7 +730,10 @@ VulkanExampleBase::VulkanExampleBase()
 VulkanExampleBase::~VulkanExampleBase()
 {
 	// Clean up Vulkan resources
+#ifdef WITH_DISPLAY
 	swapChain.cleanup();
+#endif // WITH_DISPLAY
+	
 	vkDestroyDescriptorPool(device, descriptorPool, nullptr);
 	vkDestroyRenderPass(device, renderPass, nullptr);
 	for (uint32_t i = 0; i < frameBuffers.size(); i++) {
@@ -699,6 +757,9 @@ VulkanExampleBase::~VulkanExampleBase()
 		vkDestroyDebugReportCallback(instance, debugReportCallback, nullptr);
 	}
 	vkDestroyInstance(instance, nullptr);
+
+#ifdef WITH_DISPLAY
+	
 #if defined(_DIRECT2DISPLAY)
 #elif defined(VK_USE_PLATFORM_WAYLAND_KHR)
 	wl_shell_surface_destroy(shell_surface);
@@ -718,6 +779,8 @@ VulkanExampleBase::~VulkanExampleBase()
 	xcb_destroy_window(connection, window);
 	xcb_disconnect(connection);
 #endif
+
+#endif // WITH_DISPLAY
 }
 
 void VulkanExampleBase::initVulkan()
@@ -824,7 +887,9 @@ void VulkanExampleBase::initVulkan()
 	}
 	assert(validDepthFormat);
 
+#ifdef WITH_DISPLAY
 	swapChain.connect(instance, physicalDevice, device);
+#endif // WITH_DISPLAY
 
 #if defined(VK_USE_PLATFORM_ANDROID_KHR)
 	// Get Android device name and manufacturer (to display along GPU name)
@@ -841,6 +906,10 @@ void VulkanExampleBase::initVulkan()
 	LOGD("androidProduct = %s", androidProduct.c_str());
 #endif	
 }
+
+
+#ifdef WITH_DISPLAY
+
 
 #if defined(_WIN32)
 
@@ -1704,7 +1773,9 @@ void VulkanExampleBase::handleEvent(const xcb_generic_event_t *event)
 		break;
 	}
 }
+
 #endif
+
 
 void VulkanExampleBase::windowResized() {}
 
@@ -1966,3 +2037,5 @@ void VulkanExampleBase::setupSwapChain()
 {
 	swapChain.create(&width, &height, settings.vsync);
 }
+
+#endif // WITH_DISPLAY

@@ -40,7 +40,10 @@
 #include "VulkanTexture.hpp"
 #include "VulkanglTFModel.hpp"
 #include "VulkanUtils.hpp"
+
+#ifdef WITH_DISPLAY
 #include "ui.hpp"
+#endif // WITH_DISPLAY
 
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #include "stb_image_write.h"
@@ -246,7 +249,9 @@ public:
 		glm::vec3 rotation = glm::vec3(75.0f, 40.0f, 0.0f);
 	} lightSource;
 
+#ifdef WITH_DISPLAY
 	UI *ui;
+#endif // WITH_DISPLAY
 
 #if defined(VK_USE_PLATFORM_ANDROID_KHR)
 	const std::string assetpath = "";
@@ -334,7 +339,9 @@ public:
 		textures.empty.destroy();
 
 
+#ifdef WITH_DISPLAY
 		delete ui;
+#endif // WITH_DISPLAY
 	}
 
 	void renderNode(vkglTF::Node *node, int32_t cbIndex, vkglTF::Material::AlphaMode alphaMode) {
@@ -691,15 +698,22 @@ public:
 			}
 		}
 
+#ifdef WITH_DISPLAY
+		int num_images = swapChain.imageCount;
+#else // WITH_DISPLAY
+		int num_images = 1;
+#endif // WITH_DISPLAY
+
 		std::vector<VkDescriptorPoolSize> poolSizes = {
-			{ VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, (4 + meshCount) * swapChain.imageCount },
-			{ VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, imageSamplerCount * swapChain.imageCount }
+			{ VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, (4 + meshCount) * num_images },
+			{ VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, imageSamplerCount * num_images }
 		};
+
 		VkDescriptorPoolCreateInfo descriptorPoolCI{};
 		descriptorPoolCI.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
 		descriptorPoolCI.poolSizeCount = 2;
 		descriptorPoolCI.pPoolSizes = poolSizes.data();
-		descriptorPoolCI.maxSets = (2 + materialCount + meshCount) * swapChain.imageCount;
+		descriptorPoolCI.maxSets = (2 + materialCount + meshCount) * num_images;
 		VK_CHECK_RESULT(vkCreateDescriptorPool(device, &descriptorPoolCI, nullptr, &descriptorPool));
 
 		/*
@@ -1006,7 +1020,10 @@ public:
 			loadShader(device, "skybox.vert.spv", VK_SHADER_STAGE_VERTEX_BIT),
 			loadShader(device, "skybox.frag.spv", VK_SHADER_STAGE_FRAGMENT_BIT)
 		};
+
+		std::cout << "Creating graphics pipeline" << std::endl;
 		VK_CHECK_RESULT(vkCreateGraphicsPipelines(device, pipelineCache, 1, &pipelineCI, nullptr, &pipelines.skybox));
+		std::cout << "Returning graphics pipeline" << std::endl;
 		
 		for (auto shaderStage : shaderStages) {
 			vkDestroyShaderModule(device, shaderStage.module, nullptr);
@@ -1916,6 +1933,7 @@ public:
 			0.0f);
 	}
 
+#ifdef WITH_DISPLAY
 	void windowResized()
 	{
 		recordCommandBuffers();
@@ -1923,6 +1941,7 @@ public:
 		updateUniformBuffers();
 		updateOverlay();
 	}
+#endif // WITH_DISPLAY
 
 	void prepare()
 	{
@@ -1940,9 +1959,16 @@ public:
 		waitFences.resize(renderAhead);
 		presentCompleteSemaphores.resize(renderAhead);
 		renderCompleteSemaphores.resize(renderAhead);
-		commandBuffers.resize(swapChain.imageCount);
-		uniformBuffers.resize(swapChain.imageCount);
-		descriptorSets.resize(swapChain.imageCount);
+
+#ifdef WITH_DISPLAY
+		int num_images = swapChain.imageCount;
+#else // WITH_DISPLAY
+		int num_images = 1;
+#endif // WITH_DISPLAY
+		
+		commandBuffers.resize(num_images);
+		uniformBuffers.resize(num_images);
+		descriptorSets.resize(num_images);
 		
 		// Command buffer execution fences
 		for (auto &waitFence : waitFences) {
@@ -1974,11 +2000,14 @@ public:
 		prepareUniformBuffers();
 		setupDescriptors();
 		setupCustomStuff();
+
 		
 		preparePipelines();
-		
+
+#ifdef WITH_DISPLAY
 		ui = new UI(vulkanDevice, renderPass, queue, pipelineCache, settings.sampleCount);
 		updateOverlay();
+#endif // WITH_DISPLAY
 
 		recordCommandBuffers();
 	        
@@ -2520,8 +2549,9 @@ public:
 	customStuff.secondCommandBuffer = vulkanDevice->createCommandBuffer(VK_COMMAND_BUFFER_LEVEL_PRIMARY, false);
 	
 	std::cout << "Completed custom setup" << std::endl;
-	} 
+    } 
 
+#ifdef WITH_DISPLAY
 	/*
 		Update ImGui user interface
 	*/
@@ -2717,6 +2747,8 @@ public:
 #endif
 	}
 
+#endif // WITH_DISPLAY
+
 	virtual void render()
   {
 		if (!prepared) {
@@ -2766,19 +2798,6 @@ public:
 		    std::cout << "feature name: " << settings.feature_buffers[feature_count] << std::endl;
 		  }
 		}
-		  
-		// updateOverlay();
-
-	        /* VK_CHECK_RESULT(vkWaitForFences(device, 1, &waitFences[frameIndex], VK_TRUE, UINT64_MAX));
-		VK_CHECK_RESULT(vkResetFences(device, 1, &waitFences[frameIndex]));
-
-		VkResult acquire = swapChain.acquireNextImage(presentCompleteSemaphores[frameIndex], &currentBuffer);
-		if ((acquire == VK_ERROR_OUT_OF_DATE_KHR) || (acquire == VK_SUBOPTIMAL_KHR)) {
-			windowResize();
-		}
-		else {
-			VK_CHECK_RESULT(acquire);
-			}  */
 
 		// Update UBOs
 		updateUniformBuffers();
@@ -2786,56 +2805,11 @@ public:
 		memcpy(currentUB.scene.mapped, &shaderValuesScene, sizeof(shaderValuesScene));
 		memcpy(currentUB.params.mapped, &shaderValuesParams, sizeof(shaderValuesParams));
 		memcpy(currentUB.skybox.mapped, &shaderValuesSkybox, sizeof(shaderValuesSkybox));
-
-		/* const VkPipelineStageFlags waitDstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-		VkSubmitInfo submitInfo{};
-		submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-		submitInfo.pWaitDstStageMask = &waitDstStageMask;
-		submitInfo.pWaitSemaphores = &presentCompleteSemaphores[frameIndex];
-		submitInfo.waitSemaphoreCount = 1;
-		submitInfo.pSignalSemaphores = &renderCompleteSemaphores[frameIndex];
-		submitInfo.signalSemaphoreCount = 1;
-		submitInfo.pCommandBuffers = &commandBuffers[currentBuffer];
-		submitInfo.commandBufferCount = 1;
-		VK_CHECK_RESULT(vkQueueSubmit(queue, 1, &submitInfo, waitFences[frameIndex]));
 		
-		VkResult present = swapChain.queuePresent(queue, currentBuffer, renderCompleteSemaphores[frameIndex]); */
 		
 		renderCustom(count + settings.start_index, feature_count);
 		count++;
 		
-		/* if (!((present == VK_SUCCESS) || (present == VK_SUBOPTIMAL_KHR))) {
-			if (present == VK_ERROR_OUT_OF_DATE_KHR) {
-				windowResize();
-				return;
-			}
-			else {
-				VK_CHECK_RESULT(present);
-			}
-		}
-
-		frameIndex += 1;
-		frameIndex %= renderAhead;
-
-		if (!paused) {
-			if (rotateModel) {
-				modelrot.y += frameTimer * 35.0f;
-				if (modelrot.y > 360.0f) {
-					modelrot.y -= 360.0f;
-				}
-			}
-			if ((animate) && (models.scene.animations.size() > 0)) {
-				animationTimer += frameTimer * 0.75f;
-				if (animationTimer > models.scene.animations[animationIndex].end) {
-					animationTimer -= models.scene.animations[animationIndex].end;
-				}
-				models.scene.updateAnimation(animationIndex, animationTimer);
-			}
-			updateParams();
-			if (rotateModel) {
-				updateUniformBuffers();
-			}
-			}  */
 		if (camera.updated) {
 			updateUniformBuffers();
 		}
@@ -2912,7 +2886,9 @@ int main(const int argc, const char *argv[])
 	for (int i = 0; i < argc; i++) { VulkanExample::args.push_back(argv[i]); };
 	vulkanExample = new VulkanExample();
 	vulkanExample->initVulkan();
+#ifdef WITH_DISPLAY
 	vulkanExample->setupWindow();
+#endif // WITH_DISPLAY
 	vulkanExample->prepare();
 	vulkanExample->renderLoop();
 	delete(vulkanExample);

@@ -8,6 +8,8 @@
 
 #pragma once
 
+#ifdef WITH_DISPLAY
+
 #ifdef _WIN32
 #pragma comment(linker, "/subsystem:windows")
 #include <windows.h>
@@ -19,6 +21,7 @@
 #include <android_native_app_glue.h>
 #include <sys/system_properties.h>
 #include "VulkanAndroid.h"
+
 #elif defined(VK_USE_PLATFORM_WAYLAND_KHR)
 #include <wayland-client.h>
 #elif defined(_DIRECT2DISPLAY)
@@ -26,6 +29,8 @@
 #elif defined(VK_USE_PLATFORM_XCB_KHR)
 #include <xcb/xcb.h>
 #endif
+
+#endif // WITH_DISPLAY
 
 #include <iostream>
 #include <chrono>
@@ -47,9 +52,13 @@
 #include "keycodes.hpp"
 
 #include "VulkanDevice.hpp"
+
+#ifdef WITH_DISPLAY
 #include "VulkanSwapChain.hpp"
 
 #include "imgui/imgui.h"
+
+#endif // WITH_DISPLAY
 
 // #define _VALIDATION
 
@@ -93,10 +102,15 @@ protected:
 	uint32_t currentBuffer = 0;
 	VkDescriptorPool descriptorPool;
 	VkPipelineCache pipelineCache;
+#ifdef WITH_DISPLAY
 	VulkanSwapChain swapChain;
+	void windowResize();
+#endif // WITH_DISPLAY
+
 	std::string title = "Vulkan Example";
 	std::string name = "vulkanExample";
-	void windowResize();
+
+	
 public: 
 	static std::vector<const char*> args;
 	bool prepared = false;
@@ -147,6 +161,10 @@ public:
 		bool middle = false;
 	} mouseButtons;
 
+
+	bool quit = false;
+		
+#ifdef WITH_DISPLAY
 	// OS specific 
 #if defined(_WIN32)
 	HWND window;
@@ -176,7 +194,6 @@ public:
 	bool quit = false;
 
 #elif defined(_DIRECT2DISPLAY)
-	bool quit = false;
 #elif defined(VK_USE_PLATFORM_XCB_KHR)
 	bool quit = false;
 	xcb_connection_t *connection;
@@ -185,6 +202,7 @@ public:
 	xcb_intern_atom_reply_t *atom_wm_delete_window;
 #endif
 
+	
 #if defined(_WIN32)
 	HWND setupWindow(HINSTANCE hinstance, WNDPROC wndproc);
 	void handleMessages(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam);
@@ -240,20 +258,26 @@ public:
 	void initxcbConnection();
 	void handleEvent(const xcb_generic_event_t *event);
 #endif
+#endif // WITH_DISPLAY
 
 	VulkanExampleBase();
 	virtual ~VulkanExampleBase();
+
+	int getGraphicsQueueFamilyIndex();
 	
 	void initVulkan();
 
 	virtual VkResult createInstance(bool enableValidation);
 	virtual void render() = 0;
+	virtual void prepare();
+
+#ifdef WITH_DISPLAY
 	virtual void windowResized();
 	virtual void setupFrameBuffer();
-	virtual void prepare();
 
 	void initSwapchain();
 	void setupSwapChain();
+#endif // WITH_DISPLAY
 
 	void renderLoop();
 	void renderFrame();
