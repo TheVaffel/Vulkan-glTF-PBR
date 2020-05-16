@@ -408,7 +408,7 @@ void main()
 		  break;
 		case 2:
 		  // outColor.rgb = inWorldPos;
-		  outColor.rgba = material.baseColorTextureSet > -1 ? texture(colorMap, material.baseColorTextureSet == 0 ? inUV0 : inUV1) : vec4(1.0f);  outColor = SRGBtoLINEAR(outColor);
+		  outColor.rgba = material.baseColorTextureSet > -1 ? texture(colorMap, material.baseColorTextureSet == 0 ? inUV0 : inUV1) : vec4(1.0f);  outColor = SRGBtoLINEAR(outColor) * material.baseColorFactor;
 		  // outColor.rgb = baseColor.rgb;
 		  // outColor.rgb = diffuseColor.rgb;
 		  // outColor.rgb = vec3(1.0, 0.0, 0.0);
