@@ -1021,9 +1021,7 @@ public:
 			loadShader(device, "skybox.frag.spv", VK_SHADER_STAGE_FRAGMENT_BIT)
 		};
 
-		std::cout << "Creating graphics pipeline" << std::endl;
 		VK_CHECK_RESULT(vkCreateGraphicsPipelines(device, pipelineCache, 1, &pipelineCI, nullptr, &pipelines.skybox));
-		std::cout << "Returning graphics pipeline" << std::endl;
 		
 		for (auto shaderStage : shaderStages) {
 			vkDestroyShaderModule(device, shaderStage.module, nullptr);
@@ -1400,6 +1398,7 @@ public:
 				samplerCI.maxAnisotropy = 1.0f;
 				samplerCI.borderColor = VK_BORDER_COLOR_FLOAT_OPAQUE_WHITE;
 				VK_CHECK_RESULT(vkCreateSampler(device, &samplerCI, nullptr, &cubemap.sampler));
+
 			}
 
 			// FB, Att, RP, Pipe, etc.
@@ -1556,6 +1555,7 @@ public:
 			writeDescriptorSet.dstSet = descriptorset;
 			writeDescriptorSet.dstBinding = 0;
 			writeDescriptorSet.pImageInfo = &textures.environmentCube.descriptor;
+
 			vkUpdateDescriptorSets(device, 1, &writeDescriptorSet, 0, nullptr);
 
 			struct PushBlockIrradiance {
@@ -2547,6 +2547,7 @@ public:
 
 	// customStuff.commandBuffers = vulkanDevice->createCommandBuffer(VK_COMMAND_BUFFER_LEVEL_PRIMARY, false);
 	customStuff.secondCommandBuffer = vulkanDevice->createCommandBuffer(VK_COMMAND_BUFFER_LEVEL_PRIMARY, false);
+
 	
 	std::cout << "Completed custom setup" << std::endl;
     } 
@@ -2788,7 +2789,6 @@ public:
 		  for(int i = 0; i < num_available_features; i++) {
 		    if(available_features[i] == settings.feature_buffers[feature_count]) {
 		      shaderValuesParams.debugViewEquation = i;
-		      std::cout << "Debug value set to " << i << std::endl;
 		      ok = true;
 		      break;
 		    }
