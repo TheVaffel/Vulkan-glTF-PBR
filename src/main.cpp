@@ -1996,7 +1996,6 @@ public:
 
 		loadAssets();
 		generateBRDFLUT();
-		generateCubemaps();
 		prepareUniformBuffers();
 		setupDescriptors();
 		setupCustomStuff();
@@ -2310,6 +2309,8 @@ public:
 	vkDestroyImageView(device, customStuff.fbDepth.view, nullptr);
 	vkDestroyImage(device, customStuff.fbDepth.image, nullptr);
 	vkFreeMemory(device, customStuff.fbDepth.memory, nullptr);
+
+	vkDestroyRenderPass(device, customStuff.renderPass, nullptr);
 	
 	vkDestroyFramebuffer(device, customStuff.framebuffer, nullptr);
     }
@@ -2770,7 +2771,8 @@ public:
 		      feature_count++;
 		      if(feature_count >= settings.feature_buffers.size()) {
 			std::cout << "Done following path, exiting" << std::endl;
-			exit(0);
+			this->quit = true;
+			return;
 		      }
 		    } else {
 		      std::cout << "Done following path, exiting" << std::endl;
