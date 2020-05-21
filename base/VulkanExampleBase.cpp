@@ -695,6 +695,10 @@ VulkanExampleBase::VulkanExampleBase()
 	  if((args[i] == std::string("--start")) || (args[i] == std::string("--start-index"))) {
 	    settings.start_index = std::stoi(args[++i]);
 	  }
+	  if(args[i] == std::string("--interval")) {
+	    settings.interval_t0 = std::stoi(args[++i]);
+	    settings.interval_t1 = std::stoi(args[++i]);
+	  }
 	}
 
 	if(settings.feature_buffers.size() != settings.output_prefixes.size()) {

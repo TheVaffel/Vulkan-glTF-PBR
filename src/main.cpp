@@ -2757,17 +2757,18 @@ public:
 			return;
 		}
 
-
 		// The BMFR counting starts from 1
+		const size_t start_count = settings.interval_t0 == -1 ? 0 : settings.interval_t0;
+		const size_t end_count = settings.interval_t1 == -1 ? settings.pathViews.size() : settings.interval_t1 + 1;
 				
-		static size_t count = 0;
+		static size_t count = start_count;
 		static size_t feature_count = 0;
 		
 		if(settings.followPath) {
-		  if(count >= settings.pathViews.size()) {
+		  if(count >= end_count) {
 		    if(settings.feature_buffers.size()) {
 		      std::cout << "Done with " << settings.feature_buffers[feature_count] << std::endl;
-		      count = 0;
+		      count = start_count;
 		      feature_count++;
 		      if(feature_count >= settings.feature_buffers.size()) {
 			std::cout << "Done following path, exiting" << std::endl;
@@ -2786,7 +2787,7 @@ public:
 		}
 		
 
-		if(count == 0 && settings.feature_buffers.size()) {
+		if(count == start_count && settings.feature_buffers.size()) {
 		  bool ok = false;
 		  for(int i = 0; i < num_available_features; i++) {
 		    if(available_features[i] == settings.feature_buffers[feature_count]) {

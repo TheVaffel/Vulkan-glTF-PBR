@@ -142,6 +142,7 @@ public:
 	  std::vector<std::string> feature_buffers;
 	  std::vector<std::string> output_prefixes;
 	  int start_index = 0;
+	  int interval_t0 = -1, interval_t1 = -1;
 	} settings;
 	
 	struct DepthStencil {
